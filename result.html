@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>岗位胜任力测评 - 测评结果</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <style>
+        /* Add title styles here */
+        .page-main-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            /* text-fill-color: transparent; */ /* Standard property removed as -webkit- is widely supported */
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            display: inline-block;
+        }
+        .purple-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            width: 80px;
+            border-radius: 2px;
+            margin-bottom: 2rem;
+        }
+
+        /* result.html specific styles */
+        #questionDetailsTableBody td {
+            vertical-align: middle; /* 单元格内容垂直居中 */
+        }
+        .table thead th {
+            white-space: nowrap; /* 防止表头文字换行 */
+            vertical-align: middle;
+        }
+        .col-seq { width: 5%; }
+        .col-content { width: 45%; }
+        .col-std-score { width: 10%; }
+        .col-score { width: 10%; }
+        .col-time { width: 10%; }
+        .col-comment { width: 20%; }
+
+        /* Re-added Print specific styles to only print container content and scale */
+        @media print {
+            @page { 
+                size: A4 portrait; /* Standard page size */
+                margin: 1cm; /* Slightly reduced margin */
+            }
+            body {
+                background: none !important; 
+                margin: 0;
+                padding: 0;
+                zoom: 0.72; /* Further reduced zoom to accommodate larger fonts */
+                font-size: 11.5pt; /* Increased base font size again */
+            }
+            body::before { display: none !important; }
+            .container {
+                max-width: 100% !important; 
+                width: 100% !important;
+                padding: 0 !important;    
+                margin: 0 !important;     
+                box-shadow: none !important; 
+                border: none !important;
+                background-color: transparent !important; 
+            }
+
+            /* Hide main page title and home button */
+            .title-container, 
+             .d-flex.justify-content-between.align-items-center > .btn {
+                 display: none !important;
+             }
+             /* Also hide bottom button row if present */
+             .card > .card-body > .text-center {
+                  display: none !important;
+             }
+
+            /* Ensure the sections we WANT are visible and adjust spacing */
+            .card > .card-body > .mb-4:nth-of-type(1), /* Basic Info */
+            .card > .card-body > .mb-4:nth-of-type(2), /* Score Info */
+            .card > .card-body > .card.mb-4.fade-in  /* Question Details */
+            {
+                display: block !important;
+                margin-bottom: 0.8cm !important; /* Adjusted spacing between sections */
+                box-shadow: none !important; /* Remove shadow from inner card */
+                border: none !important;    /* Remove border from inner card */
+            }
+            
+            /* Basic Info Section - Two Rows, Space Between */
+            .card > .card-body > .mb-4:nth-of-type(1) h6 {
+                margin-bottom: 0.5rem !important; 
+                border-bottom: none !important; 
+                font-size: 10.5pt !important;
+            }
+            /* Apply flex to each row within basic info */
+            .card > .card-body > .mb-4:nth-of-type(1) .row {
+                display: flex;
+                justify-content: space-between; /* Spread items in each row */
+                margin-bottom: 0.3rem !important; /* Space between the two rows */
+                line-height: 1.5; 
+            }
+            /* Style the columns within the rows */
+            .card > .card-body > .mb-4:nth-of-type(1) .row > div[class^="col-"] {
+                /* display: inline-block; --- REMOVED */
+                flex-basis: 24%; /* Roughly equal width for 4 items */
+                 /* For the second row with potentially 3 items, this might leave space */
+                 /* Alternatively, use flex-grow: 1; */
+                 padding-right: 0.5rem; /* Reduced space between items */
+                 padding-left: 0;
+                 margin-bottom: 0 !important; 
+                 text-align: left; /* Ensure text is left aligned */
+            }
+             .card > .card-body > .mb-4:nth-of-type(1) p {
+                 margin-bottom: 0 !important;
+                 display: block; /* Let label and value stack if needed */
+             }
+              .card > .card-body > .mb-4:nth-of-type(1) p strong::after {
+                 content: " "; 
+              }
+
+            /* Score Info Section - Restore visibility & layout */
+             .card > .card-body > .mb-4:nth-of-type(2) h6 {
+                 display: none; 
+             }
+            .card > .card-body > .mb-4:nth-of-type(2) .row {
+                display: flex;
+                justify-content: space-around; /* Evenly distribute the 3 score cards */
+                align-items: stretch; /* Make cards same height */
+                border: none !important; 
+                padding: 0.5rem 0;
+                flex-wrap: nowrap; 
+                margin-bottom: 1cm; 
+            }
+            /* Restore visibility of score cards and style minimally */
+            .card > .card-body > .mb-4:nth-of-type(2) .col-md-4 {
+                flex-basis: 30%; /* Give each card roughly 1/3 width */
+                display: block !important; /* Ensure columns are block */
+                 padding-right: 0.5rem; 
+                 padding-left: 0.5rem; 
+                 margin-bottom: 0;
+                 border: 1px solid #eee !important; /* Add a light border */
+                 border-radius: 0.3rem;
+            }
+            .card > .card-body > .mb-4:nth-of-type(2) .card { 
+                 /* display: contents; REMOVED */
+                 background-color: transparent !important; /* Remove card background */
+                 box-shadow: none !important;
+                 border: none !important;
+                 height: 100%; /* Fill column height */
+                 text-align: center; /* Center text within card */
+            }
+            .card > .card-body > .mb-4:nth-of-type(2) .card-body { 
+                 /* display: contents; REMOVED */
+                 padding: 0.5rem !important;
+            }
+            .card > .card-body > .mb-4:nth-of-type(2) p { 
+                 /* order: 1; REMOVED */
+                 margin: 0 !important;
+                 font-weight: normal !important; /* Normal weight label */
+                 font-size: 9pt; /* Smaller label */
+                 display: block; /* Label above value */
+                 margin-bottom: 0.3rem !important;
+            }
+             .card > .card-body > .mb-4:nth-of-type(2) h3 { 
+                 /* order: 2; REMOVED */
+                 margin: 0 !important; 
+                 font-size: 12pt !important; /* Larger score value */
+                 font-weight: bold !important;
+                 color: inherit !important; 
+                 text-align: center;
+            }
+            
+            /* Question Details Section */
+             .card > .card-body > .card.mb-4.fade-in h5, 
+             .card > .card-body > .card.mb-4.fade-in .card-header {
+                 display: none !important; /* Hide header text and background */
+             }
+              .card > .card-body > .card.mb-4.fade-in .card-body {
+                  padding: 0 !important;
+              }
+             .table {
+                font-size: 11pt; /* Increased table font size again */
+                margin-bottom: 0 !important; 
+                width: 100% !important; 
+                border-collapse: collapse !important; 
+                table-layout: auto; /* Let browser decide width */
+            }
+            /* Remove fixed column widths for print */
+            /* 
+            .col-seq { width: 5%; }
+            .col-content { width: 40%; } 
+            .col-std-score { width: 10%; }
+            .col-score { width: 10%; }
+            .col-time { width: 10%; }
+            .col-comment { width: 25%; } 
+            */
+            .table th, .table td {
+                padding: 0.8rem 0.5rem !important; /* Increased padding for row height */
+                border: 1px solid #ccc !important; 
+                word-wrap: break-word; 
+                word-break: break-all; 
+                background-color: transparent !important;
+                 vertical-align: middle; 
+            }
+            .table thead th {
+                background-color: #eee !important; 
+                font-weight: bold;
+                 text-align: center; /* Center align header text */
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Add New Title -->
+        <div class="d-flex justify-content-between align-items-center mb-3 title-container">
+             <div class="title-section">
+                 <h2 class="page-main-title"><i class="bi bi-clipboard-check me-2"></i>测评结果</h2>
+                 <div class="purple-accent-line"></div>
+             </div>
+             <!-- Keep home button here, it will be hidden on print -->
+             <button class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
+                 <i class="bi bi-house-door me-1"></i>返回首页
+             </button>
+        </div>
+
+        <div class="card">
+            <div class="card-body">
+                <!-- 基本信息 -->
+                <div class="mb-4">
+                    <h6 class="border-bottom pb-2"><i class="bi bi-person-lines-fill me-2"></i>基本信息</h6>
+                    <div class="row">
+                        <div class="col-md-3">
+                            <p><strong><i class="bi bi-person me-2"></i>姓名:</strong> <span id="userName"></span></p>
+                        </div>
+                        <div class="col-md-3">
+                            <p><strong><i class="bi bi-person-badge me-2"></i>工号:</strong> <span id="employeeId"></span></p>
+                        </div>
+                        <div class="col-md-3">
+                            <p><strong><i class="bi bi-building me-2"></i>所属车站:</strong> <span id="station"></span></p>
+                        </div>
+                        <div class="col-md-3">
+                            <p><strong><i class="bi bi-briefcase me-2"></i>岗位:</strong> <span id="position"></span></p>
+                        </div>
+                    </div>
+                    <div class="row mt-2">
+                        <div class="col-md-3">
+                            <p><strong><i class="bi bi-stopwatch me-2"></i>测评用时:</strong> <span id="assessmentDuration"></span></p>
+                        </div>
+                         <div class="col-md-3">
+                            <p><strong><i class="bi bi-person-check-fill me-2"></i>测评人:</strong> <span id="assessorName"></span></p>
+                        </div>
+                        <div class="col-md-6">
+                            <p><strong><i class="bi bi-calendar-check me-2"></i>测评时间:</strong> <span id="assessmentTimestamp"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 得分信息 -->
+                <div class="mb-4">
+                    <h6 class="border-bottom pb-2">得分信息</h6>
+                    <div class="row">
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h3 class="text-primary" id="totalScore">0</h3>
+                                    <p class="mb-0">总分</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h3 class="text-success" id="standardScore">0</h3>
+                                    <p class="mb-0">标准分值</p>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="card bg-light">
+                                <div class="card-body text-center">
+                                    <h3 class="text-info" id="scoreRate">0%</h3>
+                                    <p class="mb-0">得分率</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 题目详情 -->
+                <div class="card mb-4 fade-in">
+                    <div class="card-header">
+                        <h5 class="mb-0"><i class="bi bi-table me-2"></i>题目详情</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped table-hover">
+                                <thead>
+                                    <tr>
+                                        <th scope="col" class="col-seq">序号</th>
+                                        <th scope="col" class="col-content">题目内容</th>
+                                        <th scope="col" class="col-std-score">标准分值</th>
+                                        <th scope="col" class="col-score">得分</th>
+                                        <th scope="col" class="col-time">用时(秒)</th>
+                                        <th scope="col" class="col-comment">备注</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="questionDetailsTableBody">
+                                    <!-- 题目详情将通过 JavaScript 动态填充 -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 操作按钮 -->
+                <div class="text-center">
+                    <button class="btn btn-secondary me-2" onclick="window.location.href='history.html'">
+                        <i class="bi bi-clock-history me-1"></i> 查看历史记录
+                    </button>
+                    <button class="btn btn-info text-white me-2" onclick="goToAnalysis()">
+                        <i class="bi bi-graph-up me-1"></i> 查看数据分析
+                    </button>
+                    <button class="btn btn-primary me-2" onclick="window.print()">
+                        <i class="bi bi-printer me-1"></i> 打印结果
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/result.js"></script>
+</body>
+</html> 

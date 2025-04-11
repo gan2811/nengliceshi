@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>岗位胜任力测评 - 数据分析</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Common styles from history.html */
+        .page-main-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            display: inline-block;
+        }
+        .purple-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            width: 80px;
+            border-radius: 2px;
+            margin-bottom: 2rem;
+        }
+        /* Additional styles specific to analysis page */
+        #analysisTabs .nav-link {
+            border: 1px solid transparent;
+            border-radius: 0.5rem;
+            padding: 0.6rem 1.5rem;
+            margin-right: 0.5rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            background-color: #e9ecef; /* Default light background */
+            color: #495057;
+        }
+        #analysisTabs .nav-link.active {
+            background-color: var(--bs-primary); /* Purple background for active */
+            color: white;
+            border-color: var(--bs-primary);
+            box-shadow: 0 4px 8px rgba(var(--bs-primary-rgb), 0.3);
+        }
+        #analysisTabs .nav-link:not(.active):hover {
+            background-color: #d8dde2;
+        }
+        
+        .filter-container {
+            background-color: rgba(248, 249, 250, 0.7); /* Light semi-transparent background */
+            padding: 1.5rem;
+            border-radius: 0.5rem;
+            margin-bottom: 2rem;
+            border: 1px solid #dee2e6;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-bottom: 1.5rem;
+        }
+        .card-header {
+            font-weight: 500; /* 加粗卡片标题 */
+        }
+        ul {
+            padding-left: 1.2rem; /* 调整列表缩进 */
+        }
+        .nav-tabs .nav-link {
+            font-weight: 500;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Navigation Bar Moved Above Title -->
+        <nav class="page-navigation-metro">
+            <ul>
+                <li class="station">
+                    <a href="assessment.html" class="station-link" title="开始测评">
+                        <span class="station-icon"><i class="bi bi-pencil-square"></i></span>
+                        <span class="station-label">开始测评</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="history.html" class="station-link" title="历史记录">
+                        <span class="station-icon"><i class="bi bi-clock-history"></i></span>
+                        <span class="station-label">历史记录</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station active-station"> <!-- Analysis is active -->
+                    <a href="analysis.html" class="station-link" title="数据分析">
+                        <span class="station-icon"><i class="bi bi-bar-chart-line-fill"></i></span>
+                        <span class="station-label">数据分析</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="question-bank.html" class="station-link" title="题库管理">
+                        <span class="station-icon"><i class="bi bi-archive"></i></span>
+                        <span class="station-label">题库管理</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+             <div class="title-container">
+                 <h2 class="page-main-title"><i class="bi bi-bar-chart-line-fill me-2"></i>数据分析</h2>
+                 <div class="purple-accent-line"></div>
+             </div>
+             <!-- Data Import/Export Buttons Added Here -->
+             <div class="d-flex align-items-center">
+                <button id="exportDataBtn" class="btn btn-outline-secondary me-2"><i class="bi bi-download me-1"></i>导出数据</button>
+                <button id="importDataBtn" class="btn btn-outline-secondary me-2"><i class="bi bi-upload me-1"></i>导入数据</button>
+                <input type="file" id="importFileInput" accept=".json" style="display: none;">
+                <button class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
+                    <i class="bi bi-house-door me-1"></i>返回首页
+                </button>
+             </div>
+         </div>
+
+        <ul class="nav mb-4" id="analysisTabs" role="tablist">
+            <li class="nav-item" role="presentation">
+                <button class="nav-link active" id="position-tab" data-bs-toggle="tab" data-bs-target="#positionAnalysis" type="button" role="tab" aria-controls="positionAnalysis" aria-selected="true">
+                    <i class="bi bi-briefcase me-1"></i>岗位分析
+                </button>
+            </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="individual-tab" data-bs-toggle="tab" data-bs-target="#individualAnalysis" type="button" role="tab" aria-controls="individualAnalysis" aria-selected="false">
+                    <i class="bi bi-person me-1"></i>个人分析
+                </button>
+            </li>
+        </ul>
+
+        <div class="tab-content" id="analysisTabContent">
+            <!-- 岗位分析 Tab -->
+            <div class="tab-pane fade show active" id="positionAnalysis" role="tabpanel" aria-labelledby="position-tab">
+                <!-- Position Analysis Filters -->
+                <div class="filter-container">
+                    <div class="row mb-0 align-items-end">
+                        <div class="col-md-4">
+                            <label for="positionSelect" class="form-label"><i class="bi bi-filter me-1"></i>选择岗位</label>
+                            <select class="form-select" id="positionSelect" onchange="loadPositionAnalysis()">
+                                <option value="all">全部岗位</option>
+                                <!-- Options loaded dynamically -->
+                            </select>
+                        </div>
+                         <div class="col-md-4">
+                            <label for="positionStartDate" class="form-label"><i class="bi bi-calendar-range me-1"></i>开始日期</label>
+                            <input type="date" class="form-select" id="positionStartDate" value="" onchange="loadPositionAnalysis()">
+                        </div>
+                        <div class="col-md-4">
+                            <label for="positionEndDate" class="form-label"><i class="bi bi-calendar-range me-1"></i>结束日期</label>
+                            <input type="date" class="form-select" id="positionEndDate" value="" onchange="loadPositionAnalysis()">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Position Analysis Content Area -->
+                <div id="positionAnalysisContent" style="display: none;">
+                    <div class="row">
+                        <!-- 板块掌握情况 -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header"><i class="bi bi-bar-chart-line me-1"></i>各板块整体掌握情况 (平均得分率 %)</div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="sectionMasteryChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 人员占比 -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                 <div class="card-header"><i class="bi bi-pie-chart me-1"></i>分数段人员占比</div>
+                                 <div class="card-body">
+                                     <div class="chart-container">
+                                         <canvas id="scoreDistributionChart"></canvas>
+                                     </div>
+                                 </div>
+                            </div>
+                        </div>
+
+                             <!-- 题目掌握情况 -->
+                             <div class="col-lg-6 mb-4">
+                                <div class="card h-100 shadow-sm">
+                                     <div class="card-header"><i class="bi bi-list-ol me-1"></i>题目掌握情况 (平均得分率)</div>
+                                     <div class="card-body">
+                                         <h6><i class="bi bi-check-circle-fill text-success me-1"></i>掌握较好题目 Top 3:</h6>
+                                         <ul id="bestQuestionsList" class="list-group list-group-flush small"><li>加载中...</li></ul>
+                                         <hr>
+                                         <h6><i class="bi bi-x-circle-fill text-danger me-1"></i>待提高题目 Top 3:</h6>
+                                         <ul id="worstQuestionsList" class="list-group list-group-flush small"><li>加载中...</li></ul>
+                                     </div>
+                                </div>
+                            </div>
+
+                             <!-- 培训建议 -->
+                             <div class="col-lg-6 mb-4">
+                                <div class="card h-100 shadow-sm">
+                                     <div class="card-header"><i class="bi bi-lightbulb me-1"></i>培训建议 (基于板块平均得分率)</div>
+                                     <div class="card-body">
+                                         <ul id="positionTrainingSuggestions" class="list-group list-group-flush"><li>加载中...</li></ul>
+                                     </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- Position Analysis Placeholder -->
+                 <div id="positionAnalysisPlaceholder">
+                    <p class="text-muted text-center mt-3">请选择岗位和日期范围以加载分析数据。</p>
+                </div>
+            </div>
+
+            <!-- 个人分析 Tab -->
+            <div class="tab-pane fade" id="individualAnalysis" role="tabpanel" aria-labelledby="individual-tab">
+                <!-- Individual Analysis Filters -->
+                <div class="filter-container">
+                    <div class="row mb-0 align-items-end">
+                        <div class="col-md-4">
+                            <label for="employeePosition" class="form-label"><i class="bi bi-briefcase me-1"></i>按岗位筛选</label>
+                            <select class="form-select" id="employeePosition" onchange="filterEmployeesByPosition()">
+                                <option value="all">全部岗位</option>
+                                <!-- Options will be loaded by JS -->
+                            </select>
+                         </div>
+                         <div class="col-md-4">
+                            <label for="employeeSelect" class="form-label"><i class="bi bi-person me-1"></i>选择员工</label>
+                            <select class="form-select" id="employeeSelect" onchange="loadEmployeeAssessments()">
+                                <option value="">-- 请选择员工 --</option>
+                                <!-- 员工列表将由JS动态填充 -->
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label for="assessmentRecordSelect" class="form-label"><i class="bi bi-calendar-check me-1"></i>选择测评记录</label>
+                            <select class="form-select" id="assessmentRecordSelect" onchange="loadIndividualAnalysisFromSelection()" disabled>
+                                <option value="">-- 选择员工后加载 --</option>
+                                <!-- 测评记录将由JS动态填充 -->
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Individual Analysis Placeholder -->
+                <div id="individualAnalysisPlaceholder">
+                    <p class="text-muted text-center mt-3">请在上方筛选并选择员工及测评记录以查看其分析报告。</p>
+                </div>
+
+                <!-- Individual Analysis Content Area -->
+                <div id="individualAnalysisContent" class="d-none">
+                    <h6 id="selectedEmployeeInfo" class="mb-3"></h6> <!-- Info about selected employee/assessment -->
+                    <div class="row">
+                        <!-- Individual Section Score Distribution -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header"><i class="bi bi-pie-chart-fill me-1"></i>板块得分分布</div>
+                                <div class="card-body">
+                                    <div class="chart-container">
+                                        <canvas id="individualSectionChart"></canvas>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Individual Question Performance -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header"><i class="bi bi-list-task me-1"></i>题目掌握情况</div>
+                                <div class="card-body">
+                                     <h6><i class="bi bi-check-circle-fill text-success me-1"></i>掌握较好题目 (得分 >= 标准分):</h6>
+                                     <ul id="individualBestQuestionsList" class="list-group list-group-flush small"><li>加载中...</li></ul>
+                                     <hr>
+                                     <h6><i class="bi bi-x-circle-fill text-danger me-1"></i>待提高题目 (得分 < 标准分):</h6>
+                                     <ul id="individualWorstQuestionsList" class="list-group list-group-flush small"><li>加载中...</li></ul>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Historical Scores Comparison -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                <div class="card-header"><i class="bi bi-graph-up-arrow me-1"></i>历史测评成绩对比 (得分率 %)</div>
+                                 <div class="card-body">
+                                     <div class="chart-container">
+                                         <canvas id="historicalScoresChart"></canvas>
+                                     </div>
+                                 </div>
+                            </div>
+                        </div>
+
+                        <!-- Individual Training Suggestions -->
+                        <div class="col-lg-6 mb-4">
+                            <div class="card h-100 shadow-sm">
+                                 <div class="card-header"><i class="bi bi-person-video3 me-1"></i>个人培训建议</div>
+                                 <div class="card-body">
+                                     <ul id="individualTrainingSuggestions" class="list-group list-group-flush"><li>加载中...</li></ul>
+                                 </div>
+                            </div>
+                        </div>
+                    </div> <!-- End of .row for individual content -->
+                </div> <!-- End of #individualAnalysisContent -->
+            </div> <!-- End of #individualAnalysis Tab Pane -->
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/analysis.js?v=" + Date.now()></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // DOM Elements
+            const positionTab = document.getElementById('position-tab');
+            const individualTab = document.getElementById('individual-tab');
+            const positionAnalysisDiv = document.getElementById('positionAnalysis');
+            const individualAnalysisDiv = document.getElementById('individualAnalysis');
+            const positionFilter = positionAnalysisDiv.querySelector('.filter-container');
+            const individualFilter = individualAnalysisDiv.querySelector('.filter-container');
+            const positionContent = document.getElementById('positionAnalysisContent');
+            const individualContent = document.getElementById('individualAnalysisContent');
+            const positionPlaceholder = document.getElementById('positionAnalysisPlaceholder');
+            const individualPlaceholder = document.getElementById('individualAnalysisPlaceholder');
+            const positionSelect = document.getElementById('positionSelect');
+            const employeePositionSelect = document.getElementById('employeePosition');
+            const positionStartDate = document.getElementById('positionStartDate');
+            const positionEndDate = document.getElementById('positionEndDate');
+
+            // 1. Populate Position Dropdowns
+            try {
+                const positionsData = localStorage.getItem('jobPositions');
+                const positions = JSON.parse(positionsData || '{}');
+                console.log("Loaded jobPositions from localStorage:", positions);
+                
+                // Clear existing options (keep default 'all')
+                positionSelect.innerHTML = '<option value="all">全部岗位</option>';
+                employeePositionSelect.innerHTML = '<option value="all">全部岗位</option>';
+
+                let positionCount = 0;
+                for (const code in positions) {
+                    if (Object.hasOwnProperty.call(positions, code)) {
+                        const option = document.createElement('option');
+                        option.value = code;
+                        option.textContent = positions[code] || code; // Use name or code if name missing
+                        positionSelect.appendChild(option.cloneNode(true));
+                        employeePositionSelect.appendChild(option);
+                        positionCount++;
+                    }
+                }
+                if (positionCount === 0) {
+                     console.warn("'jobPositions' in localStorage is empty or invalid. Position dropdowns will be empty.");
+                     // Optionally display a message to the user
+                }
+            } catch (error) {
+                console.error("Error loading or parsing 'jobPositions' from localStorage:", error);
+                // Handle error, maybe disable dropdowns or show message
+            }
+
+            // 2. Set Default Date for Position Analysis
+            try {
+                const today = new Date();
+                const year = today.getFullYear();
+                const month = (today.getMonth() + 1).toString().padStart(2, '0');
+                const currentMonth = `${year}-${month}`;
+                if (positionStartDate) {
+                    positionStartDate.value = currentMonth;
+                }
+                if (positionEndDate) {
+                    positionEndDate.value = currentMonth;
+                }
+            } catch (error) {
+                 console.error("Error setting default date:", error);
+            }
+
+            // 3. Initial UI State Setup
+            const setupInitialUI = () => {
+                 const isPositionActive = positionTab.classList.contains('active');
+                 positionFilter.style.display = isPositionActive ? 'block' : 'none';
+                 individualFilter.style.display = isPositionActive ? 'none' : 'block';
+                 positionContent.style.display = 'none'; // Always hide content initially
+                 individualContent.style.display = 'none'; // Always hide content initially
+                 positionPlaceholder.style.display = isPositionActive ? 'block' : 'none';
+                 individualPlaceholder.style.display = isPositionActive ? 'none' : 'block';
+
+                 if (isPositionActive) {
+                    loadPositionAnalysis(); // Load data for the active tab
+                 } else {
+                    loadEmployeeList(); // Load employee list for the individual tab
+                 }
+             };
+
+            // 4. Tab Switching Logic
+            positionTab.addEventListener('shown.bs.tab', function() {
+                console.log("Switched to Position Analysis tab");
+                positionFilter.style.display = 'block';
+                individualFilter.style.display = 'none';
+                individualContent.style.display = 'none'; // Hide other tab's content
+                individualPlaceholder.style.display = 'none';
+                // Reload or show existing position analysis
+                loadPositionAnalysis(); 
+                // Ensure placeholder visibility is correct after loading
+                if (positionContent.style.display !== 'none') {
+                     positionPlaceholder.style.display = 'none';
+                } else {
+                     positionPlaceholder.style.display = 'block';
+                }
+            });
+
+            individualTab.addEventListener('shown.bs.tab', function() {
+                console.log("Switched to Individual Analysis tab");
+                positionFilter.style.display = 'none';
+                individualFilter.style.display = 'block';
+                positionContent.style.display = 'none'; // Hide other tab's content
+                positionPlaceholder.style.display = 'none';
+                // Load employee list if needed
+                const employeeSelect = document.getElementById('employeeSelect');
+                if (employeeSelect && employeeSelect.options.length <= 1) {
+                    loadEmployeeList();
+                }
+                 // Ensure placeholder visibility is correct
+                 if (individualContent.style.display !== 'none') {
+                      individualPlaceholder.style.display = 'none';
+                 } else {
+                      individualPlaceholder.style.display = 'block';
+                 }
+            });
+
+            // 5. Execute Initial Setup
+            setupInitialUI();
+        });
+    </script>
+</body>
+</html>
