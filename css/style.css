@@ -503,15 +503,13 @@ body::before {
 
 /* Assessment Page Styles */
 .assessment-wrapper {
-    /* background-color: #ffffff; */
-    /* padding: 3rem; */
-    /* border-radius: 1rem; */
-    /* box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08); */
-    /* Instead of a wrapper background, style the content directly */
     /* Removed wrapper background, padding, border-radius, shadow */
     /* Rely on card styling or direct element styling */
-    max-width: 800px; /* Limit width for single column */
-    margin: 2rem auto; /* Center the container with top/bottom margin */
+    /* max-width: 800px; */ /* Removed: Limit width for single column */
+    /* margin: 2rem auto; */ /* Removed: Center the container with top/bottom margin */
+    /* Let the Bootstrap container handle the width */
+    padding-top: 2rem; /* Add some top padding if needed */
+    padding-bottom: 2rem; /* Add some bottom padding */
 }
 
 /* Style for the setup/info section */
@@ -556,29 +554,106 @@ body::before {
 
 /* Section cards */
 #sectionCards .card {
-    background-color: rgba(255, 255, 255, 0.6); /* Slightly more opaque for readability */
-    /* border: 1px solid #e9ecef; */
-    /* border-radius: 0.6rem; */
-    margin-bottom: 1rem;
-    /* box-shadow: 0 2px 5px rgba(0,0,0,0.05); */
+    background-color: rgba(255, 255, 255, 0.8); /* Slightly less transparent */
+    /* border: 1px solid #e9ecef; */ /* Keep border from base card style or remove */
+    border-radius: 0.8rem; /* Consistent radius */
+    margin-bottom: 1.5rem; /* Increased spacing */
+    box-shadow: 0 4px 15px rgba(0,0,0,0.06); /* Softer shadow */
+    transition: all 0.3s ease;
+}
+
+#sectionCards .card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 6px 20px rgba(0,0,0,0.08);
 }
 
 #sectionCards .card .card-body {
-    padding: 1.2rem;
+    padding: 1.5rem 1.2rem; /* Adjust padding */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch; /* Let children determine their width */
+    min-height: 180px; /* Ensure a minimum height for consistency */
+    justify-content: space-between; /* Distribute space */
 }
+
 #sectionCards .card .card-title {
-    font-size: 1rem;
-    margin-bottom: 0.5rem;
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 0.5rem; /* Reduced margin slightly */
+    color: #343a40;
+    /* Use Flexbox for better icon alignment */
+    display: flex;
+    align-items: center;
+    justify-content: center; /* Center title content (icon + text) */
+    text-align: center; /* Ensure text within is centered */
 }
+
+#sectionCards .card .card-title i {
+    font-size: 1.2em; /* Adjusted size */
+    margin-right: 0.4rem; /* Adjusted spacing */
+    color: var(--bs-primary);
+    flex-shrink: 0; /* Prevent icon from shrinking */
+}
+
 #sectionCards .card .card-text {
-    font-size: 0.9rem;
-    margin-bottom: 0.8rem;
+    font-size: 0.85rem;
+    margin-bottom: 1rem; /* Adjusted spacing */
+    color: #6c757d;
+    text-align: center; /* Keep description centered */
+    flex-grow: 1; /* Allow text to take available space */
 }
-#sectionCards .card .input-group-sm .form-control {
-    height: calc(1.5em + 0.5rem + 2px);
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    border-radius: 0.2rem;
+
+/* Custom Number Input Styling */
+#sectionCards .card .input-group {
+    max-width: 140px; /* Limit width */
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+    border-radius: 0.3rem; /* Rounded corners for the group */
+    overflow: hidden; /* Clip button borders */
+    border: 1px solid #ced4da;
+    /* Center the input group horizontally */
+    margin-left: auto;
+    margin-right: auto;
+    margin-top: auto; /* Push to bottom if space allows */
+}
+
+#sectionCards .card .input-group .btn {
+    background-color: #f8f9fa; /* Light background for buttons */
+    border: none; /* Remove default button borders */
+    color: var(--bs-primary);
+    font-weight: bold;
+    padding: 0.3rem 0.7rem; /* Adjust padding */
+    border-radius: 0; /* Square buttons within the group */
+    z-index: 1; /* Ensure buttons are clickable */
+    transition: background-color 0.2s ease;
+}
+
+#sectionCards .card .input-group .btn:hover {
+    background-color: #e9ecef;
+    color: #5a379e;
+}
+
+#sectionCards .card .input-group .form-control {
+    text-align: center;
+    border: none; /* Remove default input border */
+    box-shadow: none; /* Remove focus shadow */
+    font-weight: 500;
+    font-size: 0.95rem;
+    height: auto; /* Auto height */
+    padding: 0.3rem 0.2rem; /* Adjust padding */
+    border-left: 1px solid #dee2e6; /* Separator line */
+    border-right: 1px solid #dee2e6; /* Separator line */
+    border-radius: 0; /* No radius for input */
+    z-index: 0;
+}
+
+/* Remove number input spinners (optional) */
+#sectionCards .card .input-group input[type=number]::-webkit-inner-spin-button,
+#sectionCards .card .input-group input[type=number]::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+#sectionCards .card .input-group input[type=number] {
+  -moz-appearance: textfield; /* Firefox */
 }
 
 /* Separator line before button */
@@ -624,9 +699,10 @@ body::before {
     animation: slideFadeInDown 0.5s ease-out forwards;
 }
 
-#assessmentArea {
-    display: none; /* Hidden by default */
-}
+/* 问题所在：这个规则导致测评区域始终隐藏，与 assessment.html 中的 JavaScript 逻辑冲突 */
+/* #assessmentArea {
+    display: none;
+} */
 
 /* Navigation Styles */
 #questionNav {
@@ -637,67 +713,85 @@ body::before {
     padding-right: 10px; /* Space for scrollbar */
 }
 
+/* Question Navigation Buttons */
 .question-nav-item {
+    /* display: inline-block; */ /* Replaced by flex */
+    /* width: 45px; */ /* Remove fixed width/height for flexible content */
+    /* height: 45px; */
+    /* line-height: 45px; */ /* No longer needed with flex */
+    /* text-align: center; */ /* Centered by flex */
+    /* border-radius: 50%; */ /* Remove to make it square/rectangle */
+    margin: 5px;
+    font-size: 0.8rem; /* Slightly smaller base font */
+    cursor: pointer;
+    transition: all 0.2s ease-in-out;
+    border: 1px solid #dee2e6; /* Add a default border */
+    min-width: 60px; /* Minimum width */
+    padding: 8px 5px; /* Adjust padding for content */
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+
+    /* Flexbox for vertical alignment */
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
-    width: 40px; /* Square size */
-    height: 40px;
-    border-radius: 50%; /* Circular */
-    margin: 5px;
-    font-weight: 500;
-    cursor: pointer;
-    border: 1px solid #ced4da;
-    background-color: #fff;
-    color: #495057;
-    transition: all 0.3s ease;
-    font-size: 0.9rem;
 }
 
-.question-nav-item:hover {
-    background-color: #e9ecef;
+.question-nav-item .qni-line1 {
+    font-weight: bold;
+    display: block; /* Ensure it takes full width */
+    line-height: 1.1;
+}
+
+.question-nav-item .qni-line2 {
+    font-size: 0.75rem; /* Smaller font for score */
+    color: #6c757d; /* Muted color */
+    display: block; /* Ensure it takes full width */
+    line-height: 1.1;
+}
+
+/* Style for the currently active question */
+.question-nav-item.active {
+    background-color: #6f42c1; /* Use Bootstrap purple or choose another color */
+    color: white;
+    border-color: #6f42c1;
+    transform: scale(1.05); /* Slightly larger */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+}
+.question-nav-item.active .qni-line2 { /* Make score line visible on active */
+    color: rgba(255, 255, 255, 0.85);
+}
+
+/* Style for answered questions */
+.question-nav-item.answered {
+    background-color: #d1e7dd; /* Light green background */
+    color: #0f5132; /* Darker green text */
+    border-color: #badbcc;
+}
+.question-nav-item.answered:not(.active) {
+    /* Optional: slightly different style if answered but not active */
+}
+
+/* Ensure button text color is legible on hover/focus too */
+.question-nav-item:hover,
+.question-nav-item:focus {
     border-color: #adb5bd;
-    transform: scale(1.05);
 }
 
-/* --- Answered and Active Styles --- */
-/* Base style for answered items */
-#questionNavButtons > .question-nav-item.answered {
-    background-color: #d1e7dd !important; /* Light green background */
-    border-color: #b1dfca !important; /* Slightly darker green border */
-    color: #0f5132 !important; /* Dark green text */
-    font-weight: bold;
+.question-nav-item.active:hover,
+.question-nav-item.active:focus {
+    background-color: #5a379e; /* Darker purple on hover/focus */
+    border-color: #5a379e;
 }
 
-/* Hover style for answered items */
-#questionNavButtons > .question-nav-item.answered:hover {
-    background-color: #badbcc !important; /* Darker green on hover */
-    border-color: #a7d1b9 !important;
-    transform: scale(1.05);
+.question-nav-item.answered:hover,
+.question-nav-item.answered:focus {
+    background-color: #b6d8c6; /* Darker green on hover/focus */
+    border-color: #a7c8b6;
 }
 
-
-/* Base style for the active item (overrides answered) */
-#questionNavButtons > .question-nav-item.active {
-    background-color: var(--bs-primary) !important; /* Purple background */
-    border-color: var(--bs-primary) !important; /* Purple border */
-    color: white !important; /* White text */
-    font-weight: bold;
-    transform: scale(1.1); /* Make active item slightly larger */
-    box-shadow: 0 0 10px rgba(var(--bs-primary-rgb), 0.5); /* Purple glow */
-}
-
-/* Hover style for the active item (should be same as active) */
-#questionNavButtons > .question-nav-item.active:hover {
-     background-color: var(--bs-primary) !important;
-     border-color: var(--bs-primary) !important;
-     color: white !important;
-     transform: scale(1.1); /* Keep size */
-     box-shadow: 0 0 12px rgba(var(--bs-primary-rgb), 0.6); /* Slightly stronger glow */
-}
-
-/* Question Content Area */
-/* Styles for the main question display area */
+/* Score Input Styling */
+/* ... existing code ... */
 
 /* Metro Style Navigation */
 .page-navigation-metro {

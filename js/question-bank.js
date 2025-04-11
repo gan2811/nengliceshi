@@ -301,6 +301,9 @@ function displayQuestions() {
 
 // 创建题目卡片 (修改序号参数)
 function createQuestionCard(question, displayIndex) { // 参数改为 displayIndex
+    // **** 添加日志 ****
+    console.log(`[createQuestionCard] Creating card for question (displayIndex ${displayIndex}):`, JSON.parse(JSON.stringify(question)));
+
     const card = document.createElement('div');
     card.className = 'question-card p-3 mb-3';
     
@@ -316,7 +319,8 @@ function createQuestionCard(question, displayIndex) { // 参数改为 displayInd
             <span class="badge ${typeBadgeClass} rounded-pill">${typeLabel}</span>
         </div>
         <div class="question-info">
-            <div class="standard-answer-content"><strong>标准答案：</strong>${standardAnswerHTML}</div>
+            <div class="standard-answer-content preserve-newlines"><strong>标准答案：</strong>${standardAnswerHTML}</div>
+            ${question.knowledgeSource ? `<div class="mt-1 text-muted small"><strong>知识点来源：</strong>${question.knowledgeSource}</div>` : ''}
             <div class="mt-2">
                 <div class="d-flex justify-content-between">
                     <div>
@@ -374,6 +378,7 @@ function showAddQuestionModal() {
     document.getElementById('questionForm').reset();
     document.getElementById('questionId').value = '';
     document.getElementById('section').value = '';
+    document.getElementById('knowledgeSource').value = ''; // 清空知识点来源
     
     // 设置默认岗位为当前选中岗位
     document.querySelectorAll('.position-checkbox').forEach(checkbox => {
@@ -397,6 +402,7 @@ function editQuestion(id) {
     document.getElementById('questionType').value = question.type;
     document.getElementById('standardScore').value = question.standardScore;
     document.getElementById('section').value = question.section || '';
+    document.getElementById('knowledgeSource').value = question.knowledgeSource || ''; // 填充知识点来源
 
     // 设置岗位选择
     const positions = question.position || [];
@@ -501,7 +507,8 @@ function saveQuestion() {
         type: document.getElementById('questionType').value,
         standardScore: parseInt(document.getElementById('standardScore').value),
         position: selectedPositions,
-        section: document.getElementById('section').value
+        section: document.getElementById('section').value,
+        knowledgeSource: document.getElementById('knowledgeSource').value.trim() || undefined // 获取知识点来源，为空则存 undefined
     };
 
     let newPositionAdded = false;
@@ -644,6 +651,7 @@ function processImport() {
                 const standardScore = parseInt(row[3]);
                 const positionText = row[4] ? String(row[4]).trim() : '';
                 const section = row[5] ? String(row[5]).trim() : '';
+                const knowledgeSource = row[6] ? String(row[6]).trim() : ''; // 读取知识点来源 (第7列)
 
                 // **** 修改检查：不再要求 standardAnswer 必须存在 ****
                 if (!content || isNaN(standardScore)) {
@@ -670,8 +678,9 @@ function processImport() {
                     standardAnswer: standardAnswer,
                     type: type,
                     standardScore: standardScore,
-                    position: positionCodes.length > 0 ? positionCodes : undefined, 
-                    section: section
+                    position: positionCodes.length > 0 ? positionCodes : undefined,
+                    section: section,
+                    knowledgeSource: knowledgeSource || undefined // 存储知识点来源，为空则存 undefined
                 };
                 questionBank.push(newQuestion);
                 importedCount++;
@@ -719,7 +728,8 @@ function downloadTemplate() {
             '题目类型': '必答题',
             '标准分值': 100,
             '适用岗位': '值班站长、车站值班员',
-            '所属板块': '示例板块'
+            '所属板块': '示例板块',
+            '知识点来源': '示例来源，例如：《XX手册》第 Y 节'
         }
     ];
 
@@ -738,7 +748,8 @@ function exportQuestions() {
         '题目类型': q.type === 'required' ? '必答题' : '随机题',
         '标准分值': q.standardScore,
         '适用岗位': formatPositions(q.position),
-        '所属板块': q.section || ''
+        '所属板块': q.section || '',
+        '知识点来源': q.knowledgeSource ? q.knowledgeSource : '无'
     }));
 
     const ws = XLSX.utils.json_to_sheet(exportData);

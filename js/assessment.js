@@ -835,7 +835,8 @@ function submitAssessment() {
              standardScore: q.standardScore,
              standardAnswer: q.standardAnswer,
              section: q.section,
-             type: q.type
+             type: q.type,
+             knowledgeSource: q.knowledgeSource // <-- 添加这一行
          })),
         answers: currentAssessmentData.answers
     };

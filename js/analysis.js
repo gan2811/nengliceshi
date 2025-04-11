@@ -849,36 +849,45 @@ function calculateIndividualQuestionPerformance(record) {
          if (!q || !q.id) return;
          const answer = record.answers[q.id];
          const standardScore = q.standardScore || 0; // 需要 standardScore
+         const knowledgeSource = q.knowledgeSource || null; // 获取知识点来源
 
-         if (answer && standardScore > 0) {
-             const score = answer.score !== null ? answer.score : 0;
-             const questionInfo = {
-                 content: q.content || '无内容',
-                 score: score,
-                 standardScore: standardScore,
-                 comment: answer.comment || ''
-             };
-             if (score >= standardScore) { // 掌握较好定义为得分等于或超过标准分
-                 performance.best.push(questionInfo);
+         // **** 修改：包含 id 和 knowledgeSource ****
+         const questionInfo = {
+             id: q.id, // 添加 ID
+             content: q.content || '无内容',
+             score: '未作答', // 默认未作答
+             standardScore: standardScore,
+             comment: '', // 默认空备注
+             knowledgeSource: knowledgeSource // 添加来源
+         };
+
+         if (answer) { // 如果有答案记录
+             questionInfo.score = (answer.score !== null && !isNaN(answer.score)) ? answer.score : 0;
+             questionInfo.comment = answer.comment || '';
+
+             if (standardScore > 0) {
+                 if (questionInfo.score >= standardScore) { 
+                     performance.best.push(questionInfo);
+                 } else {
+                     performance.worst.push(questionInfo);
+                 }
              } else {
-                 performance.worst.push(questionInfo);
+                  // 标准分为0或无效，也归为待提高？
+                  performance.worst.push(questionInfo); 
              }
-         } else if (answer && standardScore <= 0) {
-              // 标准分为0或无效，也归为待提高？或者单独分类
          } else {
-              // 没有答案的题目
-               performance.worst.push({
-                    content: q.content || '无内容',
-                    score: '未作答',
-                    standardScore: standardScore,
-                    comment: ''
-               });
+             // 没有答案记录的题目，归为待提高
+             performance.worst.push(questionInfo);
          }
      });
 
-     // 可以选择性地对 best 和 worst 列表排序，例如按得分排序
-      performance.best.sort((a, b) => b.score - a.score);
-      performance.worst.sort((a, b) => a.score - b.score); // 得分低的在前
+     // 按得分率排序（将'未作答'视为最低分）
+     const calculateRate = (q) => {
+         if (q.score === '未作答') return -1; // 未作答得分率最低
+         return q.standardScore > 0 ? (q.score / q.standardScore * 100) : 0;
+     };
+      performance.best.sort((a, b) => calculateRate(b) - calculateRate(a)); // 高分在前
+      performance.worst.sort((a, b) => calculateRate(a) - calculateRate(b)); // 低分在前
 
     return performance;
 }
@@ -978,141 +987,391 @@ function renderHistoricalScoresChart(historyData) {
     console.log('[renderHistoricalScoresChart] END.');
 }
 
-// **** Implementation for single-record training suggestions ****
-// **** Modify signature to accept history ****
-function generateIndividualTrainingSuggestions(record, relevantHistory = []) { 
-    console.log("[generateIndividualTrainingSuggestions(record)] START. Record ID:", record?.id, "History records count:", relevantHistory.length);
+// **** 重构：生成个人培训建议 (V2) ****
+function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
+    console.log(`[generateIndividualTrainingSuggestions] START. Received record ID: ${record ? record.id : 'N/A'}, relevantHistory count: ${relevantHistory.length}`);
+    
+    // **** 在函数开头添加日志 ****
+    console.log("--- generateIndividualTrainingSuggestions ---");
+    const weakQuestions = record.questions ? JSON.parse(JSON.stringify(record.questions.filter(q => {
+        const answer = record.answers[q.id];
+        return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 < 70;
+    }))) : [];
+    const improvableQuestions = record.questions ? JSON.parse(JSON.stringify(record.questions.filter(q => {
+        const answer = record.answers[q.id];
+        return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 >= 70 && (answer.score / q.standardScore) * 100 < 85;
+    }))) : [];
+    console.log("Calculated weakQuestions:", weakQuestions); 
+    console.log("Calculated improvableQuestions:", improvableQuestions);
+    // **** 日志结束 ****
+
     const suggestions = [];
+    // **** Add Try-Catch block for robustness ****
+    try {
+        // 定义得分率阈值
+        const criticalThreshold = 60; // 非常薄弱，需重点关注
+        const weakThreshold = 75;     // 有待提高
+        const goodThreshold = 90;      // 良好
 
-    if (!record) {
-        console.warn("[generateIndividualTrainingSuggestions(record)] Received invalid record.");
-        return []; 
-    }
+        // --- 0. 数据有效性检查 ---
+        if (!record || !record.questions || !record.answers) {
+            console.warn("[generateIndividualTrainingSuggestions V2] Invalid record data provided. Returning error suggestion.");
+            // Return error suggestion array
+            return [{ type: 'error', text: '无法生成培训建议：测评记录数据不完整或格式错误。', icon: 'bi-x-octagon-fill text-danger', priority: -1 }];
+        }
+        console.log("[generateIndividualTrainingSuggestions V2] Data validation passed.");
 
-    // --- Calculate Section Rates (as before) --- 
-    const sectionScoreRates = {};
-    if (record.questions && record.answers) {
-         // ... (calculation logic as previously added remains here) ...
-         const tempSectionScores = {}; 
-         record.questions.forEach(q => {
-              if (!q || !q.id || !record.answers.hasOwnProperty(q.id)) return;
-              const section = q.section || '未分类';
-              const answer = record.answers[q.id];
-              const standardScore = (q.standardScore !== undefined && q.standardScore !== null) ? Number(q.standardScore) : 0;
-              const currentScore = (answer && answer.score !== undefined && answer.score !== null && !isNaN(answer.score)) ? Number(answer.score) : 0;
-              if (!tempSectionScores[section]) tempSectionScores[section] = { score: 0, max: 0 };
-              if (standardScore > 0) { 
-                   tempSectionScores[section].score += currentScore;
-                   tempSectionScores[section].max += standardScore;
-              }
-         });
-         Object.keys(tempSectionScores).forEach(section => {
-              const data = tempSectionScores[section];
-              sectionScoreRates[section] = data.max > 0 ? Math.round((data.score / data.max) * 100) : 0;
-         });
-     }
-     console.log("[generateIndividualTrainingSuggestions(record)] Calculated Section Rates:", sectionScoreRates);
+        // --- 1. 计算核心指标 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 1: Calculating core metrics...");
+        const sectionPerformance = calculateIndividualSectionPerformance(record);
+        const sectionScoreRates = {}; // { sectionName: scoreRate }
+        if (sectionPerformance.performance) {
+            Object.entries(sectionPerformance.performance).forEach(([section, data]) => {
+                sectionScoreRates[section] = data.max > 0 ? Math.round((data.score / data.max) * 100) : 0;
+            });
+        }
+        const overallScoreRate = sectionPerformance.totalStandard > 0
+            ? Math.round((sectionPerformance.totalAchieved / sectionPerformance.totalStandard) * 100)
+            : 0;
+        const questionPerformance = calculateIndividualQuestionPerformance(record); // { best: [], worst: [] }
+        console.log("[generateIndividualTrainingSuggestions V2] Step 1 DONE. Overall Rate:", overallScoreRate, "Section Rates:", sectionScoreRates);
 
-    // --- Get Worst Questions (as before) --- 
-    const questionPerformance = calculateIndividualQuestionPerformance(record); 
-    const worstQuestions = questionPerformance.worst;
-    console.log("[generateIndividualTrainingSuggestions(record)] Worst Questions:", worstQuestions);
+        // --- 2. 分析历史趋势 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 2: Analyzing trend...");
+        let trendSuggestion = null;
+        const currentRecordIndex = relevantHistory.findIndex(r => r.id === record.id);
+        if (currentRecordIndex > 0) {
+            const currentScoreRate = record.score?.scoreRate;
+            const previousRecord = relevantHistory[currentRecordIndex - 1];
+            const previousScoreRate = previousRecord?.score?.scoreRate;
+            if (currentScoreRate !== undefined && previousScoreRate !== undefined) {
+                const difference = currentScoreRate - previousScoreRate;
+                if (difference < -10) { // 显著下降
+                    trendSuggestion = {
+                        type: 'trend_critical_down',
+                        text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-danger">显著下降</strong>，需高度重视，分析原因并加强学习。`,
+                        icon: 'bi-graph-down-arrow text-danger', priority: 0
+                    };
+                } else if (difference < -3) { // 轻微下降
+                    trendSuggestion = {
+                        type: 'trend_slight_down',
+                        text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-warning">有所下降</strong>，请注意保持学习状态。`,
+                        icon: 'bi-arrow-down-right text-warning', priority: 3
+                    };
+                } else if (difference > 10) { // 显著提升
+                     trendSuggestion = {
+                         type: 'trend_up',
+                         text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-success">显著提升</strong>，值得肯定，请继续保持！`,
+                         icon: 'bi-graph-up-arrow text-success', priority: 4
+                     };
+                } else if (difference > 3) { // 轻微提升
+                     trendSuggestion = {
+                         type: 'trend_slight_up',
+                         text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-success">有所进步</strong>，继续努力！`,
+                         icon: 'bi-arrow-up-right text-success', priority: 5
+                     };
+                } else { // 成绩稳定
+                     trendSuggestion = {
+                         type: 'trend_stable',
+                         text: `成绩趋势：与上次 (${previousScoreRate}%)相比，本次 (${currentScoreRate}%) 成绩保持稳定。`,
+                         icon: 'bi-dash-lg text-secondary', priority: 5
+                     };
+                }
+                if (trendSuggestion) {
+                    suggestions.push(trendSuggestion);
+                    console.log("[generateIndividualTrainingSuggestions V2]   -> Trend suggestion added:", trendSuggestion.type);
+                } else {
+                    console.log("[generateIndividualTrainingSuggestions V2]   -> No specific trend detected.");
+                }
+            }
+        } else {
+             console.log("[generateIndividualTrainingSuggestions V2]   -> Not enough history for trend analysis (current index <= 0).");
+        }
+        console.log("[generateIndividualTrainingSuggestions V2] Step 2 DONE. Current suggestions count:", suggestions.length);
 
-    // --- Generate Suggestions --- 
-
-    // 1. Based on section scores (< 70%)
-    Object.entries(sectionScoreRates).forEach(([section, scoreRate]) => {
-        // **** Adjust threshold to 70% and update wording ****
-         if (scoreRate < 70) { 
-              suggestions.push({
-                   type: 'section',
-                   text: `板块 <strong class="text-warning">${section}</strong> 得分率较低 (${scoreRate}%)，建议：<strong class="text-warning">加强培训</strong>。`,
-                   icon: 'bi-exclamation-circle-fill text-warning', // Use warning icon
-                   scoreRate: scoreRate 
-              });
-         }
-    });
-
-    // 2. Based on worst questions
-    if (worstQuestions && worstQuestions.length > 0) {
-        let worstList = '';
-        const topWorstQuestions = worstQuestions.slice(0, 3); 
-        topWorstQuestions.forEach(q => {
-            const scoreText = q.score !== undefined && q.standardScore !== undefined ? `${q.score}/${q.standardScore}` : (q.score !== undefined ? `${q.score}` : 'N/A');
-            worstList += `<li><span class="text-danger">${q.content || '无内容'}</span> <span class="badge bg-danger ms-2">${scoreText}</span></li>`;
+        // --- 3. 分析板块表现 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 3: Analyzing section performance...");
+        let hasCriticalSection = false;
+        let hasWeakSection = false;
+        Object.entries(sectionScoreRates).sort(([, rateA], [, rateB]) => rateA - rateB).forEach(([section, scoreRate]) => {
+            if (scoreRate < criticalThreshold) {
+                hasCriticalSection = true;
+                suggestions.push({
+                    type: 'section_critical',
+                    text: `<strong>重点关注板块：</strong> <strong class="text-danger">${section}</strong> (${scoreRate}%)，掌握程度严重不足，建议安排<strong class="text-danger">系统性培训和专项辅导</strong>。`,
+                    icon: 'bi-exclamation-triangle-fill text-danger', priority: 1
+                });
+                 console.log(`[generateIndividualTrainingSuggestions V2]   -> Critical section suggestion added for: ${section}`);
+            } else if (scoreRate < weakThreshold) {
+                hasWeakSection = true;
+                suggestions.push({
+                    type: 'section_weak',
+                    text: `<strong>待加强板块：</strong> <strong class="text-warning">${section}</strong> (${scoreRate}%)，掌握尚有不足，建议<strong class="text-warning">加强复习和针对性练习</strong>。`,
+                    icon: 'bi-exclamation-circle-fill text-warning', priority: 2
+                });
+                 console.log(`[generateIndividualTrainingSuggestions V2]   -> Weak section suggestion added for: ${section}`);
+            }
         });
-        
-        suggestions.push({
-            type: 'worst_questions',
-            // **** Update wording ****
-            text: `以下题目掌握较差，建议：<strong class="text-danger">加强培训</strong>。<ul class="list-unstyled small ms-3 mt-1">${worstList}</ul>`,
-            icon: 'bi-journal-x text-danger',
-            priority: 1 // High priority
-        });
-    }
+        console.log("[generateIndividualTrainingSuggestions V2] Step 3 DONE. Current suggestions count:", suggestions.length);
 
-    // 3. Based on historical trend (if enough history)
-    // **** Add history comparison logic ****
-    const currentRecordIndex = relevantHistory.findIndex(r => r.id === record.id);
-    if (currentRecordIndex > 0) { // Ensure there is a previous record
-        const currentScoreRate = record.score?.scoreRate;
-        const previousRecord = relevantHistory[currentRecordIndex - 1];
-        const previousScoreRate = previousRecord?.score?.scoreRate;
-        
-        if (currentScoreRate !== undefined && previousScoreRate !== undefined && currentScoreRate < previousScoreRate) {
-             suggestions.push({
-                 type: 'trend',
-                 // **** Update wording ****
-                 text: `本次测评成绩 (${currentScoreRate}%) 低于上次 (${previousScoreRate}%)，建议：<strong class="text-warning">加强培训教育，分析原因</strong>。`,
-                 icon: 'bi-graph-down-arrow text-warning',
-                 priority: 2 // Medium priority
-             });
+        // --- 4. 分析具体题目表现 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 4: Analyzing question performance...");
+        const criticalQuestions = questionPerformance.worst.filter(q => q.score === '未作答' || (q.standardScore > 0 && (q.score / q.standardScore * 100) < criticalThreshold));
+        const weakQuestions = questionPerformance.worst.filter(q => !criticalQuestions.includes(q) && q.score !== '未作答' && q.standardScore > 0 && (q.score / q.standardScore * 100) < weakThreshold);
+
+        if (criticalQuestions.length > 0) {
+            let questionListHTML = criticalQuestions.slice(0, 3).map(q => { // 最多显示3个
+                const scoreText = q.score === '未作答' ? '<span class="badge bg-danger">未作答</span>' : `<span class="badge bg-danger">${q.score}/${q.standardScore}</span>`;
+                // **** 新增日志：检查 knowledgeSource ****
+                console.log(`[Suggestion Gen] Critical Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
+                const sourceText = q.knowledgeSource 
+                                   ? `，建议<strong class="text-danger">重点复习《${q.knowledgeSource}》</strong>相关内容` 
+                                   : '，建议<strong class="text-danger">查找相关资料重点复习</strong>';
+                return `<li class="mb-1">${q.content || '无内容'} ${scoreText}${sourceText}</li>`;
+            }).join('');
+            suggestions.push({
+                type: 'questions_critical',
+                // **** 修改：更新建议文本主体 ****
+                text: `<strong>掌握薄弱题目：</strong>以下题目得分低于 ${criticalThreshold}% 或未作答，请<strong class="text-danger">重点关注</strong>：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`,
+                icon: 'bi-journal-x text-danger', priority: 1
+            });
+            console.log("[generateIndividualTrainingSuggestions V2]   -> Critical questions suggestion added.");
+        } else if (weakQuestions.length > 0) {
+            let questionListHTML = weakQuestions.slice(0, 3).map(q => {
+                const scoreText = `<span class="badge bg-warning">${q.score}/${q.standardScore}</span>`;
+                 // **** 新增日志：检查 knowledgeSource ****
+                 console.log(`[Suggestion Gen] Weak Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
+                 const sourceText = q.knowledgeSource 
+                                   ? `，建议<strong class="text-warning">参考《${q.knowledgeSource}》加深理解</strong>` 
+                                   : '，建议<strong class="text-warning">对照标准答案加深理解</strong>';
+                return `<li class="mb-1">${q.content || '无内容'} ${scoreText}${sourceText}</li>`;
+            }).join('');
+            suggestions.push({
+                type: 'questions_weak',
+                 // **** 修改：更新建议文本主体 ****
+                text: `<strong>待改进题目：</strong>以下题目得分介于 ${criticalThreshold}%-${weakThreshold}%，有提升空间：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`,
+                icon: 'bi-journal-check text-warning', priority: 3
+            });
+            console.log("[generateIndividualTrainingSuggestions V2]   -> Weak questions suggestion added.");
         }
-    }
+        console.log("[generateIndividualTrainingSuggestions V2] Step 4 DONE. Current suggestions count:", suggestions.length);
 
-    // 4. Generic success message if no specific issues found
-    if (suggestions.length === 0) {
-         suggestions.push({
-             type: 'success',
-             text: '本次测评各方面表现良好，请继续保持！',
-             icon: 'bi-check-circle-fill text-success',
-             priority: 4 // Low priority
-         });
-    }
-
-    // Sort suggestions: Priority first (lower number = higher prio), then by scoreRate for sections
-    suggestions.sort((a, b) => {
-        const prioA = a.priority !== undefined ? a.priority : (a.type === 'section' ? 3 : 10);
-        const prioB = b.priority !== undefined ? b.priority : (b.type === 'section' ? 3 : 10);
-        if (prioA !== prioB) {
-            return prioA - prioB; // Sort by priority
+        // --- 5. 总体评价与学习方法建议 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 5: Generating overall evaluation and learning method...");
+        if (overallScoreRate < criticalThreshold) {
+           suggestions.push({
+               type: 'overall_critical',
+               text: `<strong>总体评价：</strong>本次测评成绩 (${overallScoreRate}%) <strong class="text-danger">偏低</strong>，基础知识和核心技能掌握不足。`,
+               icon: 'bi-clipboard-x text-danger', priority: 2
+           }); // **Fix: Added comma**
+           suggestions.push({
+               type: 'learning_method_low',
+               text: `<strong>学习建议：</strong><strong class="text-danger">必须系统复习</strong>，对照教材/手册，逐一攻克薄弱点，多向同事或师傅请教，增加实操练习。`,
+               icon: 'bi-mortarboard-fill text-danger', priority: 2
+           });
+           console.log("[generateIndividualTrainingSuggestions V2]   -> Critical overall evaluation added.");
+        } else if (overallScoreRate < weakThreshold) {
+           suggestions.push({
+               type: 'overall_weak',
+               text: `<strong>总体评价：</strong>本次测评成绩 (${overallScoreRate}%) <strong class="text-warning">有待提高</strong>，部分知识点掌握不够牢固。`,
+               icon: 'bi-clipboard-minus text-warning', priority: 3
+           }); // **Fix: Added comma**
+           suggestions.push({
+               type: 'learning_method_medium',
+               text: `<strong>学习建议：</strong><strong class="text-warning">查漏补缺</strong>，重点巩固易错点，参与模拟演练，加强案例分析。`,
+               icon: 'bi-mortarboard-fill text-warning', priority: 3
+           });
+           console.log("[generateIndividualTrainingSuggestions V2]   -> Weak overall evaluation added.");
+        } else if (overallScoreRate < goodThreshold) {
+           suggestions.push({
+               type: 'overall_good',
+               text: `<strong>总体评价：</strong>本次测评成绩 (${overallScoreRate}%) <strong class="text-success">良好</strong>，基本掌握了岗位要求。`,
+               icon: 'bi-clipboard-check text-success', priority: 4
+           }); // **Fix: Added comma**
+           suggestions.push({
+               type: 'learning_method_good',
+               text: `<strong>学习建议：</strong><strong class="text-success">持续学习</strong>，关注业务更新和新技术，尝试解决更复杂的问题。`,
+               icon: 'bi-mortarboard-fill text-success', priority: 4
+           });
+           console.log("[generateIndividualTrainingSuggestions V2]   -> Good overall evaluation added.");
+        } else { 
+           suggestions.push({
+               type: 'overall_excellent',
+               text: `<strong>总体评价：</strong>本次测评成绩 (${overallScoreRate}%) <strong class="text-primary">优秀</strong>，熟练掌握各项技能！`,
+               icon: 'bi-clipboard-data text-primary', priority: 5
+           }); // **Fix: Added comma**
+           suggestions.push({
+               type: 'learning_method_excellent',
+               text: `<strong>学习建议：</strong><strong class="text-primary">保持领先</strong>，可以深入研究特定领域，分享经验，参与指导新员工。`,
+               icon: 'bi-mortarboard-fill text-primary', priority: 5
+           });
+           console.log("[generateIndividualTrainingSuggestions V2]   -> Excellent overall evaluation added.");
         }
-        // If same priority (likely sections), sort by score rate ascending
-        if (a.type === 'section' && b.type === 'section') {
-             return (a.scoreRate === undefined ? 1000 : a.scoreRate) - (b.scoreRate === undefined ? 1000 : b.scoreRate);
-        }
-        return 0; // Keep original order if priorities are same and not sections
-    });
+        console.log("[generateIndividualTrainingSuggestions V2] Step 5 DONE. Current suggestions count:", suggestions.length);
 
-    console.log("[generateIndividualTrainingSuggestions(record)] Generated Suggestions:", suggestions);
-    return suggestions; // Return the array
+        // --- 6. 最终检查与默认建议 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 6: Final checks and default suggestion...");
+        if (suggestions.length === 0) {
+            suggestions.push({
+                type: 'default_ok',
+                text: '本次测评整体表现尚可，请参照具体板块和题目得分，继续学习和巩固。',
+                icon: 'bi-info-circle text-secondary',
+                priority: 10
+            });
+            console.log("[generateIndividualTrainingSuggestions V2]   -> No specific issues found, adding default suggestion.");
+        } else if (!hasCriticalSection && !hasWeakSection && overallScoreRate >= goodThreshold && (!trendSuggestion || !trendSuggestion.type.includes('down'))) {
+            suggestions.push({
+                type: 'overall_praise',
+                text: '综合来看，您对岗位知识掌握非常扎实，表现出色！',
+                icon: 'bi-hand-thumbs-up-fill text-primary',
+                priority: 5 // 让它排在优秀评价和学习建议之后
+            });
+            console.log("[generateIndividualTrainingSuggestions V2]   -> Adding praise suggestion.");
+        }
+        console.log("[generateIndividualTrainingSuggestions V2] Step 6 DONE. Current suggestions count:", suggestions.length);
+
+        // --- 7. 排序与返回 ---
+        console.log("[generateIndividualTrainingSuggestions V2] Step 7: Sorting and returning suggestions...");
+        suggestions.sort((a, b) => a.priority - b.priority);
+        console.log("[generateIndividualTrainingSuggestions V2] FINAL Generated Suggestions (before return):", JSON.parse(JSON.stringify(suggestions))); // Deep copy for logging
+        return suggestions;
+
+    } catch (error) {
+        // **** Catch any unexpected errors ****
+        console.error("[generateIndividualTrainingSuggestions V2] UNEXPECTED ERROR during execution:", error);
+        // Return a generic error suggestion
+        return [{ type: 'error', text: '生成培训建议时发生内部错误，请联系管理员。 ', icon: 'bi-exclamation-diamond-fill text-danger', priority: -1 }];
+    }
 }
 
+// **** 确保 displayIndividualTrainingSuggestions 函数存在 ****
+// (这个函数可能不需要修改，因为它主要依赖于 suggestion 对象的 text 和 icon 属性)
 function displayIndividualTrainingSuggestions(suggestions) {
     const list = document.getElementById('individualTrainingSuggestions');
      if (!list) return;
     list.innerHTML = '';
 
-     if (suggestions.length > 0) {
+     if (suggestions && suggestions.length > 0) {
         suggestions.forEach(s => {
             const li = document.createElement('li');
-             li.className = 'list-group-item';
-             li.innerHTML = `<i class="bi ${s.icon} me-2\"></i> ${s.text}`;
+             // 优先使用 s.type 来决定样式，如果 s.icon 存在则覆盖
+            let iconClass = 'bi-info-circle'; // Default
+            if (s.type?.includes('error')) iconClass = 'bi-x-octagon-fill text-danger';
+            else if (s.type?.includes('critical')) iconClass = 'bi-exclamation-triangle-fill text-danger';
+            else if (s.type?.includes('weak') || s.type?.includes('medium')) iconClass = 'bi-exclamation-circle-fill text-warning';
+             else if (s.type?.includes('good')) iconClass = 'bi-check-circle-fill text-success';
+             else if (s.type?.includes('excellent') || s.type?.includes('praise')) iconClass = 'bi-star-fill text-primary'; // 或者用 bi-hand-thumbs-up-fill
+             else if (s.type?.includes('trend_up')) iconClass = 'bi-graph-up-arrow text-success';
+             else if (s.type?.includes('trend_down')) iconClass = 'bi-graph-down-arrow text-danger';
+             else if (s.type?.includes('stable')) iconClass = 'bi-dash-lg text-secondary';
+             else if (s.type?.includes('learning')) iconClass = 'bi-mortarboard-fill'; // 学习方法用统一图标，颜色由文字决定
+
+             if(s.icon) iconClass = s.icon; // 如果对象直接提供了icon，则使用它
+
+             li.className = 'list-group-item border-0 px-0'; // 使用无边框列表项
+             li.innerHTML = `<div class="d-flex align-items-start">
+                                <i class="bi ${iconClass} me-2 mt-1" style="font-size: 1.1rem; min-width: 1.1em;"></i>
+                                <div class="suggestion-text">${s.text || '无建议内容'}</div>
+                             </div>`;
             list.appendChild(li);
         });
     } else {
-        list.innerHTML = '<li class=\"list-group-item\"><i class=\"bi bi-check-lg text-success me-2\"></i>所有板块均已达到合格标准，且近期成绩稳定或有提升。</li>';
+        // 修改默认无建议的提示
+        list.innerHTML = '<li class="list-group-item border-0 px-0"><i class="bi bi-check-circle-fill text-success me-2"></i> 综合分析显示您当前掌握情况良好，暂无特别的改进建议，请继续保持！</li>';
     }
+}
+
+// **** 删除旧的（占位的） generateIndividualTrainingSuggestions 函数 ****
+// (大约在 1703 行附近，如果存在的话)
+
+// **** 删除旧的（占位的） generateCombinedTrainingSuggestions 函数 ****
+// (大约在 1707 行附近，如果存在的话)
+// function generateCombinedTrainingSuggestions(records) { /* ... implement ... */ }
+
+// **** 重新定义：生成多次测评综合培训建议 ****
+function generateCombinedTrainingSuggestions(records) {
+    console.log("[generateCombinedTrainingSuggestions V2] Generating combined suggestions for", records.length, "records");
+    const suggestions = [];
+    if (!records || records.length === 0) {
+         return [{ type: 'warning', text: '无法生成综合建议：缺少测评记录数据。', icon: 'bi-exclamation-circle-fill text-warning', priority: 0 }];
+    }
+
+    const avgSectionScores = calculateAverageSectionScores(records);
+    const combinedQuestionPerformance = analyzeCombinedQuestionPerformance(records);
+    const historyData = records.map(r => ({ timestamp: r.timestamp || r.endTime, scoreRate: r.score?.scoreRate || 0 }))
+                            .sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+    const criticalThreshold = 70; // 综合分析阈值可适当调整
+    const weakThreshold = 85;
+
+    // 1. 综合板块表现
+    const sortedSections = Object.entries(avgSectionScores).sort(([, rateA], [, rateB]) => rateA - rateB);
+    let hasWeakCombinedSection = false;
+    sortedSections.forEach(([section, rate]) => {
+        if (rate < criticalThreshold) {
+            hasWeakCombinedSection = true;
+            suggestions.push({
+                priority: 1, icon: 'bi-bar-chart-steps text-danger',
+                text: `<strong>长期薄弱板块：</strong> ${section} 板块在 ${records.length} 次测评中平均得分率 (${rate}%) 持续偏低，需制定<strong class="text-danger">针对性提升计划</strong>。`
+            });
+        } else if (rate < weakThreshold) {
+            suggestions.push({
+                priority: 2, icon: 'bi-bar-chart-line text-warning',
+                text: `<strong>有待巩固板块：</strong> ${section} 板块平均得分率 (${rate}%) 有提升空间，建议<strong class="text-warning">阶段性复习</strong>。`
+            });
+        }
+    });
+
+    // 2. 综合题目表现 (最差的几个)
+    if (combinedQuestionPerformance.worst.length > 0) {
+         let questionListHTML = combinedQuestionPerformance.worst.slice(0, 3).map(q =>
+             `<li class="mb-1">${q.content || '无内容'} <span class="badge bg-danger">平均: ${q.avgScoreRate}%</span></li>`
+         ).join('');
+         suggestions.push({
+            priority: 1, icon: 'bi-card-list text-danger',
+            text: `<strong>常见失分题目：</strong> 以下题目在多次测评中平均得分率较低，需<strong class="text-danger">重点攻克</strong>：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`
+        });
+    }
+
+    // 3. 总体趋势分析
+    if (historyData.length >= 3) { // 至少需要3个点判断趋势
+        const firstRate = historyData[0].scoreRate;
+        const lastRate = historyData[historyData.length - 1].scoreRate;
+        const trendDiff = lastRate - firstRate;
+        if (trendDiff < -5) {
+            suggestions.push({
+                priority: 0, icon: 'bi-graph-down text-danger',
+                text: `<strong>长期趋势：</strong> 从 ${formatSimpleDateTime(historyData[0].timestamp)} (${firstRate}%) 到 ${formatSimpleDateTime(historyData[historyData.length-1].timestamp)} (${lastRate}%)，整体成绩呈<strong class="text-danger">下降趋势</strong>，需警惕！`
+            });
+        } else if (trendDiff > 5) {
+             suggestions.push({
+                priority: 3, icon: 'bi-graph-up text-success',
+                text: `<strong>长期趋势：</strong> 从 ${formatSimpleDateTime(historyData[0].timestamp)} (${firstRate}%) 到 ${formatSimpleDateTime(historyData[historyData.length-1].timestamp)} (${lastRate}%)，整体成绩呈<strong class="text-success">上升趋势</strong>，值得肯定！`
+            });
+        } else {
+            suggestions.push({
+                priority: 4, icon: 'bi-graph-up text-secondary',
+                text: `<strong>长期趋势：</strong> 整体成绩保持相对稳定（从 ${firstRate}% 到 ${lastRate}%）。`
+            });
+        }
+    }
+
+    // 4. 综合总结建议
+    if (suggestions.length === 0) {
+         suggestions.push({
+            priority: 5, icon: 'bi-check2-all text-success',
+            text: '综合多次测评结果，您在各方面表现均比较稳定且良好，请继续保持学习热情！'
+        });
+    } else if (!hasWeakCombinedSection) {
+        suggestions.push({
+            priority: 4, icon: 'bi-check-circle text-success',
+            text: '综合来看，各知识板块掌握情况较好，请重点关注上述提到的个别题目或趋势。'
+        });
+    }
+
+    suggestions.sort((a, b) => a.priority - b.priority);
+    console.log("[generateCombinedTrainingSuggestions V2] Generated Suggestions:", suggestions);
+    return suggestions;
 }
 
 // 工具函数 (如果 main.js 中没有的话)
@@ -1516,10 +1775,30 @@ function generateIndividualAnalysis(records) {
         
         // 1. 板块得分分布 (包含未得分)
         console.log("[generateIndividualAnalysis] Calculating individual section performance...");
-        const sectionPerformanceResult = calculateIndividualSectionPerformance(record); 
+        const sectionPerformanceResult = calculateIndividualSectionPerformance(record);
+
+        // **** 清空旧的小饼图容器 ****
+        const breakdownContainer = document.getElementById('individualSectionBreakdownCharts');
+        if (breakdownContainer) breakdownContainer.innerHTML = '';
+
         console.log("[generateIndividualAnalysis] Rendering individual section chart (with unscored)...");
         // **** 调用修改后的图表渲染函数，传递完整结果对象 ****
-        renderIndividualSectionChart(sectionPerformanceResult); 
+        renderIndividualSectionChart(sectionPerformanceResult); // Render the main doughnut chart
+
+        // **** 新增：渲染每个板块的小饼图 ****
+        if (sectionPerformanceResult.performance && breakdownContainer) {
+            Object.entries(sectionPerformanceResult.performance).forEach(([sectionName, data]) => {
+                // **** 添加日志 ****
+                console.log(`[generateIndividualAnalysis] Processing section for breakdown chart: ${sectionName}`, data);
+                if (data.max > 0) { // Only render if the section has scorable questions
+                    console.log(`  -> Calling renderSectionBreakdownChart for ${sectionName}`); // **** 添加日志 ****
+                    renderSectionBreakdownChart(sectionName, data.score, data.max, 'individualSectionBreakdownCharts');
+                } else {
+                     console.log(`  -> Skipping render for ${sectionName} because max score is 0.`); // **** 添加日志 ****
+                }
+            });
+        }
+        // **** 渲染小饼图结束 ****
 
         // 2. 题目掌握情况
         console.log("[generateIndividualAnalysis] Calculating individual question performance...");
@@ -1539,8 +1818,10 @@ function generateIndividualAnalysis(records) {
         
         // 4. 个人培训建议 (基于本次，并结合历史)
         console.log("[generateIndividualAnalysis] Generating individual training suggestions...");
-        // **** 修改：传递 record 和 relevantHistory ****
         const suggestions = generateIndividualTrainingSuggestions(record, relevantHistory); 
+        // **** 新增日志：检查接收到的 suggestions 值 ****
+        console.log("[generateIndividualAnalysis] Received suggestions:", suggestions);
+        
         console.log("[generateIndividualAnalysis] Rendering training suggestions...");
         renderTrainingSuggestions(suggestions, 'individualTrainingSuggestions');
 
@@ -1574,6 +1855,9 @@ function generateIndividualAnalysis(records) {
         // 4. 综合培训建议
         console.log("[generateIndividualAnalysis] Generating combined training suggestions...");
         const combinedSuggestions = generateCombinedTrainingSuggestions(records); // 确保此函数存在且正确
+        // **** 新增日志：检查接收到的 combinedSuggestions 值 ****
+        console.log("[generateIndividualAnalysis] Received combined suggestions:", combinedSuggestions);
+        
         console.log("[generateIndividualAnalysis] Rendering combined training suggestions...");
         renderTrainingSuggestions(combinedSuggestions, 'individualTrainingSuggestions');
     }
@@ -1685,9 +1969,6 @@ function analyzeCombinedQuestionPerformance(records) { /* ... implement ... */
     return { best, worst };
 }
 
-// 生成单次测评培训建议 (保持不变)
-function generateIndividualTrainingSuggestions(record) { /* ... */ }
-
 // 生成多次测评综合培训建议 (新增)
 function generateCombinedTrainingSuggestions(records) { /* ... implement ... */ 
      console.log("Generating combined training suggestions for", records.length, "records");
@@ -1741,7 +2022,9 @@ function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
             } else {
                 const score = q.score !== undefined ? q.score : 'N/A';
                 const standardScore = q.standardScore !== undefined ? q.standardScore : 'N/A';
-                scoreInfo = `<span class="badge bg-secondary rounded-pill">${score} / ${standardScore}</span>`;
+                // **** 修改：如果是待提高列表，使用红色背景 ****
+                const badgeBgClass = listId.includes('Worst') ? 'bg-danger' : 'bg-secondary';
+                scoreInfo = `<span class="badge ${badgeBgClass} rounded-pill">${score} / ${standardScore}</span>`;
             }
             li.innerHTML = `<span>${text}</span> ${scoreInfo}`;
             listElement.appendChild(li);
@@ -2297,3 +2580,86 @@ function handleFileImport(event) {
 }
 
 // **** 结束新增导入导出函数 ****
+
+// **** 新增：渲染单个板块得分的迷你饼图 ****
+function renderSectionBreakdownChart(sectionName, achievedScore, maxScore, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container) {
+        console.error(`[renderSectionBreakdownChart] Error: Container #${containerId} not found.`);
+        return;
+    }
+
+    // 清理旧图表（如果需要重新渲染）
+    // container.innerHTML = '';
+
+    // 创建图表容器和标题
+    const chartDiv = document.createElement('div');
+    chartDiv.className = 'col-md-6 col-lg-4 mb-3'; // 调整布局
+    chartDiv.innerHTML = `
+        <div class="card h-100 shadow-sm">
+            <div class="card-header text-center small fw-bold">${sectionName}</div>
+            <div class="card-body p-2">
+                <div style="height: 150px; position: relative;">
+                    <canvas id="breakdown-${sectionName.replace(/\s+/g, '-')}"></canvas>
+                </div>
+                <p class="card-text text-center small mt-2 mb-0">
+                    得分: ${achievedScore} / ${maxScore}
+                </p>
+                <p class="card-text text-center small mb-0">
+                    掌握率: ${maxScore > 0 ? Math.round((achievedScore / maxScore) * 100) : 0}%
+                </p>
+            </div>
+        </div>
+    `;
+    container.appendChild(chartDiv);
+
+    // 获取新创建的 canvas
+    const canvasId = `breakdown-${sectionName.replace(/\s+/g, '-')}`;
+    const ctx = document.getElementById(canvasId)?.getContext('2d');
+    if (!ctx) {
+        console.error(`[renderSectionBreakdownChart] Error: Canvas #${canvasId} not found after creation.`);
+        return;
+    }
+
+    const dataValues = [achievedScore, Math.max(0, maxScore - achievedScore)];
+    const labels = ['已得分', '未得分'];
+    const backgroundColors = [
+        'rgba(25, 135, 84, 0.7)', // Success (已得分)
+        'rgba(220, 53, 69, 0.5)'  // Danger-light (未得分)
+    ];
+
+    try {
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: dataValues,
+                    backgroundColor: backgroundColors,
+                    borderColor: '#fff',
+                    borderWidth: 1
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%', // Make it thinner
+                plugins: {
+                    legend: {
+                        display: false // Hide legend for small charts
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.label}: ${context.parsed}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    } catch (error) {
+        console.error(`[renderSectionBreakdownChart] Error creating chart for section ${sectionName}:`, error);
+    }
+}
+// **** 结束新增函数 ****
