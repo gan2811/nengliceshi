@@ -31,6 +31,37 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // **** 新增：键盘事件监听 ****
     document.addEventListener('keydown', handleKeydown);
+
+    // 检查是否有正在进行的测评
+    const savedAssessment = localStorage.getItem('currentAssessment');
+    if (savedAssessment) {
+        currentAssessmentData = JSON.parse(savedAssessment);
+        currentQuestions = currentAssessmentData.questions;
+        currentQuestionIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
+        userAnswers = currentAssessmentData.answers;
+        
+        // **** 调用 displayUserInfo 显示信息 ****
+        displayUserInfo(currentAssessmentData.userInfo);
+
+        // 隐藏信息表单，显示测评区域
+        document.getElementById('userInfoForm').classList.add('d-none');
+        document.getElementById('assessmentArea').classList.remove('d-none');
+
+        // 恢复计时器状态
+        const assessmentStartTime = new Date(currentAssessmentData.startTime);
+        startTimer(assessmentStartTime);
+
+        // 生成导航并显示当前题目
+        generateQuestionNavigation(); // Generate buttons first
+        showQuestion(currentQuestionIndex); // Then show the correct question
+        updateProgressAndStatus(); // Update counts
+        updateSubmitButton(); // Update submit button state
+        
+    } else {
+        // 没有正在进行的测评，显示信息表单
+        document.getElementById('userInfoForm').classList.remove('d-none');
+        document.getElementById('assessmentArea').classList.add('d-none');
+    }
 });
 
 // **** 新增：处理键盘事件 ****
@@ -69,6 +100,20 @@ function getPositionName(code) {
         // 在这里可以根据需要添加更多岗位
     };
     return positionMap[code] || code; // 如果找不到映射，返回原始代码
+}
+
+// **** 新增：根据车站代码获取车站名称 ****
+function getStationName(code) {
+    const stationMap = {
+        'grand_hall': '大礼堂',
+        'seven_hills': '七星岗',
+        'houbao': '后堡',
+        'wanshou': '万寿路',
+        'nanhu': '南湖',
+        'lanhua': '兰花路'
+        // 可以根据需要添加更多车站
+    };
+    return stationMap[code] || code; // 如果找不到映射，返回原始代码
 }
 
 // 初始化表单
@@ -267,9 +312,15 @@ function updateStartButton() {
     const startBtn = document.getElementById('startBtn');
     const startBtnHint = document.getElementById('startBtnHint');
     const hasSelectedQuestions = Array.from(selectedSections.values()).some(count => count > 0);
+    const positionValue = document.getElementById('position').value;
+
+    // **** 添加日志 ****
+    console.log(`[updateStartButton] Position value: '${positionValue}', Has selected random questions: ${hasSelectedQuestions}`);
 
     if (startBtn) {
-        startBtn.disabled = !document.getElementById('position').value;
+        // **** 修改逻辑：按钮是否禁用只取决于是否选择了岗位 ****
+        startBtn.disabled = !positionValue;
+        console.log(`[updateStartButton] Setting startBtn.disabled to: ${!positionValue}`); // **** 添加日志 ****
     }
 
     if (startBtnHint) {
@@ -292,8 +343,20 @@ function updateStartButton() {
     }
 }
 
+// **** 新增：显示用户信息的函数 ****
+function displayUserInfo(userData) {
+    if (!userData) return;
+    document.getElementById('userInfoName').textContent = userData.name || '-';
+    document.getElementById('userInfoEmployeeId').textContent = userData.employeeId || '-';
+    document.getElementById('userInfoStation').textContent = getStationName(userData.station) || '-';
+    document.getElementById('userInfoPosition').textContent = userData.positionName || getPositionName(userData.position) || '-'; 
+}
+
 // 开始测评
 function startAssessment() {
+    // **** 添加日志 ****
+    console.log("[startAssessment] Function called.");
+
     const name = document.getElementById('name').value;
     const employeeId = document.getElementById('employeeId').value;
     const station = document.getElementById('station').value;
@@ -304,11 +367,22 @@ function startAssessment() {
         return;
     }
 
+    const userInfo = {
+        name: name,
+        employeeId: employeeId,
+        station: station, // Assuming you want to store the selected station text
+        position: position, // Store the position code
+        positionName: document.getElementById('position').selectedOptions[0]?.text || position // Store position name
+    };
+
     // 获取该岗位所有题目
     const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
     const positionQuestions = questionBank.filter(q => 
         q.position && (Array.isArray(q.position) ? q.position.includes(position) : q.position === position || q.position.includes('all'))
     );
+
+    // **** 添加日志 ****
+    console.log(`[startAssessment] Found ${positionQuestions.length} questions for position '${position}'.`);
 
     // 1. 筛选出所有必答题
     const requiredQuestions = positionQuestions.filter(q => q.type === 'required');
@@ -328,6 +402,9 @@ function startAssessment() {
     // 3. 合并必答题和选答题
     const finalSelectedQuestions = [...requiredQuestions, ...randomSelectedQuestions];
     
+    // **** 添加日志 ****
+    console.log(`[startAssessment] Total required: ${requiredQuestions.length}, Total random selected: ${randomSelectedQuestions.length}, Final selected: ${finalSelectedQuestions.length}`);
+    
     // 如果最终没有题目（例如只有选答题模块但用户没选），则提示
     if (finalSelectedQuestions.length === 0) {
         alert('没有选中任何题目，请确认岗位设置或模块选择。');
@@ -339,20 +416,16 @@ function startAssessment() {
     // 保存测评信息
     currentAssessmentData = {
         id: Date.now(),
-        userInfo: {
-            name: name,
-            employeeId: employeeId,
-            station: station,
-            position: position
-        },
-        position: position,
+        userInfo: userInfo,
+        position: position, // Keep position code here for filtering
         questions: finalSelectedQuestions.map(q => ({ // 只存储题目核心信息，减少冗余
             id: q.id,
             content: q.content,
             standardScore: q.standardScore,
             standardAnswer: q.standardAnswer, // 保留标准答案用于结果页对比
             section: q.section,
-            type: q.type
+            type: q.type,
+            knowledgeSource: q.knowledgeSource // <-- 添加这一行
         })),
         answers: {}, // 初始化为空对象
         startTime: assessmentStartTime.toISOString(), // 总开始时间
@@ -375,6 +448,8 @@ function startAssessment() {
 
     localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData)); // 保存初始状态
     
+    // **** 添加日志 ****
+    console.log("[startAssessment] Hiding user info form, showing assessment area.");
     // 显示测评区域
     document.getElementById('userInfoForm').classList.add('d-none');
     document.getElementById('assessmentArea').classList.remove('d-none');
@@ -387,6 +462,11 @@ function startAssessment() {
     // 开始计时器 (如果需要显示总时长)
     startTimer(assessmentStartTime);
 
+    // **** 调用 displayUserInfo 显示信息 ****
+    displayUserInfo(currentAssessmentData.userInfo);
+
+    // **** 添加日志 ****
+    console.log("[startAssessment] Calling displayCurrentQuestion for the first time.");
     // 显示第一题
     displayCurrentQuestion(); 
 }
@@ -399,10 +479,13 @@ function getRandomQuestions(questions, count) {
 
 // 更新显示题目
 function displayCurrentQuestion() {
+    // **** 添加详细日志 ****
+    console.log("[displayCurrentQuestion] Function called for index:", currentQuestionIndex);
     if (currentQuestionIndex < 0 || currentQuestionIndex >= currentQuestions.length) {
-        console.error("Invalid question index:", currentQuestionIndex);
+        console.error("[displayCurrentQuestion] Invalid question index:", currentQuestionIndex);
         return; 
     }
+    console.log("[displayCurrentQuestion] Current question data:", JSON.parse(JSON.stringify(currentQuestions[currentQuestionIndex])));
 
     const question = currentQuestions[currentQuestionIndex];
     // 使用 HTML 中实际存在的 ID
@@ -413,16 +496,31 @@ function displayCurrentQuestion() {
     const commentInputElement = document.getElementById('commentInput');
     const standardScoreDisplayElement = document.getElementById('standardScoreDisplay'); // Get score display element
     
+    // **** 添加元素存在性检查日志 ****
+    console.log("[displayCurrentQuestion] Checking elements:");
+    console.log("  progressElement:", progressElement ? 'Exists' : 'MISSING!');
+    console.log("  questionContentElement:", questionContentElement ? 'Exists' : 'MISSING!');
+    console.log("  standardAnswerElement:", standardAnswerElement ? 'Exists' : 'MISSING!');
+    console.log("  scoreInputElement:", scoreInputElement ? 'Exists' : 'MISSING!');
+    console.log("  commentInputElement:", commentInputElement ? 'Exists' : 'MISSING!');
+    console.log("  standardScoreDisplayElement:", standardScoreDisplayElement ? 'Exists' : 'MISSING!');
+    
     // 更新检查，只检查核心元素
     if (!progressElement || !questionContentElement || !standardAnswerElement || !scoreInputElement || !commentInputElement || !standardScoreDisplayElement) {
-        console.error("Assessment UI elements (progress, content, score display, score input, comment) are missing.");
+        console.error("[displayCurrentQuestion] Assessment UI elements (progress, content, score display, score input, comment) are missing or have incorrect IDs in assessment.html.");
+        // 可以在这里停止执行或采取其他措施，防止后续代码出错
         return; 
     }
+    console.log("[displayCurrentQuestion] All required elements found. Proceeding to update UI.");
 
     // 更新进度显示格式
     progressElement.textContent = `第 ${currentQuestionIndex + 1} 题 (共 ${currentQuestions.length} 题)`; 
     questionContentElement.textContent = question.content; // 直接设置文本内容
-    standardAnswerElement.innerHTML = formatAnswerContent(question.standardAnswer);
+    
+    // **** 为标准答案元素添加 preserve-newlines 类 ****
+    standardAnswerElement.innerHTML = formatAnswerContent(question.standardAnswer); // 使用 innerHTML 以渲染可能的 HTML
+    standardAnswerElement.classList.add('preserve-newlines');
+
     standardScoreDisplayElement.textContent = question.standardScore !== null ? question.standardScore : 'N/A'; // Display standard score
 
     // **记录当前题目的开始作答时间 (逻辑保持)**
@@ -599,35 +697,31 @@ function updateProgressAndStatus() {
 // **** 修改：更新题目导航按钮样式 ****
 function updateQuestionNavigation() {
     const navContainer = document.getElementById('questionNavButtons');
-    if (!navContainer) return;
+    if (!navContainer || !currentQuestions || currentQuestions.length === 0) return;
     const buttons = navContainer.querySelectorAll('.question-nav-item');
 
     buttons.forEach((button, index) => {
-        const questionId = currentQuestions[index]?.id; // Get question ID for this button index
-        if (!questionId) return; // Skip if question data is missing
+        const question = currentQuestions[index]; // Get the full question object
+        if (!question) return;
+        const questionId = question.id;
 
-        const answer = userAnswers[questionId];
+        const answer = currentAssessmentData.answers[questionId];
         const isScored = answer && answer.score !== null && !isNaN(answer.score);
-        const score = isScored ? answer.score : null;
+        const score = isScored ? answer.score : '--'; // Use '--' if not scored
+        const standardScore = question.standardScore !== null ? question.standardScore : '-'; // Handle null standard score
 
-        // Reset classes first
-        button.classList.remove('btn-primary', 'btn-success', 'btn-outline-secondary');
-        button.textContent = `第 ${index + 1} 题`; // Reset text
+        button.classList.remove('active', 'answered');
+
+        // **** Update the score line (line 2) ****
+        const scoreLine = button.querySelector('.qni-line2');
+        if (scoreLine) {
+            scoreLine.textContent = `${score} / ${standardScore}`;
+        }
 
         if (index === currentQuestionIndex) {
-            // Current question style
-            button.classList.add('btn-primary');
-            // Optionally add score to active button too
-            if (isScored) {
-                button.textContent += ` (${score})`; 
-            }
+            button.classList.add('active');
         } else if (isScored) {
-            // Scored question style
-            button.classList.add('btn-success');
-            button.textContent += ` (${score})`; // Add score to text
-        } else {
-            // Default (unscored) question style
-            button.classList.add('btn-outline-secondary');
+            button.classList.add('answered');
         }
     });
 }
@@ -801,17 +895,21 @@ function generateQuestionNavigation() {
 
     currentQuestions.forEach((question, index) => {
         const button = document.createElement('button');
-        // **** Assign index to dataset for later retrieval ****
-        button.dataset.index = index; 
-        // Add class for easier selection
-        button.className = 'btn btn-sm question-nav-item'; 
-        button.textContent = `第 ${index + 1} 题`;
+        button.dataset.index = index;
+        button.className = 'btn btn-sm question-nav-item'; // Use custom class
+
+        // **** Set innerHTML with two lines ****
+        const standardScore = question.standardScore !== null ? question.standardScore : '-'; // Handle null standard score
+        button.innerHTML = `
+            <span class="qni-line1">第 ${index + 1} 题</span>
+            <span class="qni-line2">-- / ${standardScore}</span>
+        `;
+
         button.onclick = () => showQuestion(index);
         navContainer.appendChild(button);
     });
-    
-    // **** Initial style update after generation ****
-    updateQuestionNavigation(); 
+
+    updateQuestionNavigation();
 }
 
 // 添加新函数：显示指定题目 (逻辑不变)
