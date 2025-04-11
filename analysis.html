@@ -370,12 +370,16 @@
                 const today = new Date();
                 const year = today.getFullYear();
                 const month = (today.getMonth() + 1).toString().padStart(2, '0');
-                const currentMonth = `${year}-${month}`;
+                const day = today.getDate().toString().padStart(2, '0'); // 获取当前日
+
+                const firstDayOfMonth = `${year}-${month}-01`; // yyyy-MM-01 格式
+                const currentDate = `${year}-${month}-${day}`; // yyyy-MM-dd 格式
+
                 if (positionStartDate) {
-                    positionStartDate.value = currentMonth;
+                    positionStartDate.value = firstDayOfMonth; // 设置为本月第一天
                 }
                 if (positionEndDate) {
-                    positionEndDate.value = currentMonth;
+                    positionEndDate.value = currentDate; // 设置为当前日期
                 }
             } catch (error) {
                  console.error("Error setting default date:", error);

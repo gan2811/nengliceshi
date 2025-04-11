@@ -4,8 +4,9 @@ let scoreDistributionChartInstance = null;
 let individualSectionChartInstance = null;
 let historicalScoresChartInstance = null;
 // **** Add missing global variable ****
-let positionSectionChartInstance = null; 
+let positionSectionChartInstance = null;
 let allEmployees = []; // 存储所有员工
+
 
 // **** 新增：清空分析显示区域函数 ****
 function clearAnalysisDisplay() {
@@ -107,29 +108,16 @@ function loadPositionList() {
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
     // 初始化岗位分析日期范围为当前月份
-    const today = new Date();
-    const currentMonth = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2);
-    const positionDateRangeInput = document.getElementById('positionDateRange');
-    if (positionDateRangeInput) {
-        positionDateRangeInput.value = currentMonth;
-        positionDateRangeInput.max = currentMonth; // 防止选择未来月份
-    }
+    // const today = new Date();
+    // const currentMonth = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2);
+    // const positionDateRangeInput = document.getElementById('positionDateRange');
+    // if (positionDateRangeInput) {
+    //     positionDateRangeInput.value = currentMonth;
+    //     positionDateRangeInput.max = currentMonth; // 防止选择未来月份
+    // }
 
     // 初始化个人分析的员工下拉列表
-    const employeeSelect = document.getElementById('employeeSelect');
-    if (employeeSelect) {
-        // **** 移除旧的、可能冲突的 change 事件监听器 ****
-        // **** HTML onchange="loadEmployeeAssessments()" 已经足够 ****
-        /* 
-        employeeSelect.addEventListener('change', function() {
-            // const selectedEmployeeId = this.value;
-            // if (selectedEmployeeId) {
-            //     // **** 错误点：这里之前可能调用了旧的 loadIndividualAnalysis ****
-            //     // 正确的流程应该是通过 HTML 的 onchange 调用 loadEmployeeAssessments
-            // }
-        });
-        */
-    }
+    // const employeeSelect = document.getElementById('employeeSelect');
 
     // **** 新增：检查 URL 参数并自动加载分析 ****
     const urlParams = new URLSearchParams(window.location.search);
@@ -153,7 +141,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     } else {
         // 默认行为：如果 URL 没有指定，加载岗位分析或员工列表
-        if(document.getElementById('position-tab').classList.contains('active')) {
+        const activeTab = document.querySelector('#analysisTabs .nav-link.active');
+        if(activeTab && activeTab.id === 'position-tab') {
             loadPositionAnalysis();
         }
         // 初始加载员工列表（用于手动选择）
@@ -196,7 +185,7 @@ document.addEventListener('DOMContentLoaded', function() {
         importBtn.addEventListener('click', () => fileInput.click()); // 点击导入按钮触发文件选择
         fileInput.addEventListener('change', handleFileImport);
     }
-    // **** 结束新增事件监听 ****
+
 });
 
 // --- 岗位分析 ---
@@ -1891,7 +1880,7 @@ function clearIndividualAnalysis() { /* ... */ }
 // function getPositionName(code) { ... } // 已经在上面定义
 
 // 确保 formatDate / formatSimpleDateTime
-// function formatSimpleDateTime(dateString) { ... } // 应该在上面定义
+// function formatDate(dateString) { ... } // 应该在上面定义
 
 // ... (其他可能存在的 Helper Functions) ...
 

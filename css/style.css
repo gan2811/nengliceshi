@@ -251,185 +251,189 @@ body::before {
 }
 
 .question-details .card-title {
-    color: var(--primary-color);
-    font-weight: 600;
     margin-bottom: 1rem;
+    font-weight: 600;
 }
 
 /* 动画效果 */
 @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; }
+    to { opacity: 1; }
 }
 
 .fade-in {
-    animation: fadeIn 0.5s ease-out;
+    animation: fadeIn 0.5s ease-in-out;
 }
 
 /* 添加提交按钮脉冲动画效果 */
 @keyframes btn-pulse {
     0% {
-        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0.7);
+        box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0.7);
     }
     70% {
-        box-shadow: 0 0 0 10px rgba(25, 135, 84, 0);
+        box-shadow: 0 0 0 10px rgba(var(--bs-primary-rgb), 0);
     }
     100% {
-        box-shadow: 0 0 0 0 rgba(25, 135, 84, 0);
+        box-shadow: 0 0 0 0 rgba(var(--bs-primary-rgb), 0);
     }
 }
 
 .btn-pulse {
-    animation: btn-pulse 1.5s infinite;
+    animation: btn-pulse 2s infinite;
 }
 
 /* 响应式调整 */
 @media (max-width: 768px) {
     .card-header {
-        padding: 0.75rem;
+        font-size: 1rem;
     }
-    
     .table thead th,
     .table tbody td {
-        padding: 0.75rem;
+        font-size: 0.9rem;
+        padding: 0.5rem;
     }
-    
     .btn {
         padding: 0.4rem 0.8rem;
+        font-size: 0.9rem;
     }
 }
 
 /* 调整题目卡片中标准答案内容的样式 */
 .question-card .standard-answer-content {
-    /* 移除高度限制和滚动条 */
-    /* max-height: 150px; */
-    /* overflow-y: auto; */
-    line-height: 1.5;
-    /* padding-right: 5px; */ /* 不再需要为滚动条留空间 */
+    background-color: #f8f9fa; /* 轻微背景色区分 */
+    padding: 10px;
+    border-radius: 5px;
+    border: 1px solid #e9ecef;
+    margin-top: 10px;
+    font-size: 0.9em;
+    max-height: 150px; /* 限制最大高度 */
+    overflow-y: auto; /* 超出时显示滚动条 */
 }
 
 /* 确保标准答案中的图片不会超出容器宽度 */
 .question-card .standard-answer-content img {
-    max-width: 100%;
-    height: auto;
-    display: block;
+    max-width: 100%; /* 图片最大宽度为容器宽度 */
+    height: auto; /* 高度自适应 */
+    display: block; /* 防止图片下方有额外空白 */
     margin-top: 5px;
     margin-bottom: 5px;
+    border: 1px solid #ddd; /* 给图片加个边框 */
+    border-radius: 4px;
 }
 
 /* Index Page Specific Styles - Major Overhaul */
 .index-title {
-    color: #343a40;
-    font-weight: 700; /* Bolder */
-    font-size: 2.8rem; /* Larger */
-    margin-bottom: 4rem !important; /* Even more space */
-    text-shadow: 1px 1px 2px rgba(0,0,0,0.1);
+    font-size: 2.8rem;
+    font-weight: bold;
+    margin-bottom: 2.5rem; /* Increased margin */
+    background: linear-gradient(90deg, var(--bs-primary), #a058e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
 }
 
 .index-card {
-    /* background-color: #ffffff; */ /* Remove solid background */
-    background: rgba(255, 255, 255, 0.35); /* Adjust alpha for desired glass effect */
-    backdrop-filter: blur(10px); /* Adjust blur intensity */
-    -webkit-backdrop-filter: blur(10px);
-    border: 1px solid rgba(255, 255, 255, 0.2);
-    border-radius: 1rem; /* Consistent radius */
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1); /* Soft shadow */
-    overflow: hidden; /* Keep for potential pseudo-elements */
-    position: relative; /* Keep for positioning */
-    transition: transform 0.3s ease, box-shadow 0.3s ease, background 0.4s ease; /* Keep transitions */
+    /* background-color: rgba(255, 255, 255, 0.85); */
+    /* border-radius: 1rem; */
+    /* box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1); */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    text-decoration: none;
+    color: inherit;
+    position: relative;
+    overflow: hidden; /* Needed for the pseudo-element */
+    border: none; /* Remove default border if using pseudo-element hover */
 }
 
 .index-card:hover {
-    /* Keep existing hover transform/shadow */
-    transform: translateY(-8px) scale(1.02);
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15); /* Slightly enhanced shadow on hover */
-    /* background: rgba(255, 255, 255, 0.45); */ /* Optional: Slightly change background on hover */
+    transform: translateY(-8px); /* Slightly more lift */
+    box-shadow: 0 8px 25px rgba(111, 66, 193, 0.2); /* Purple shadow on hover */
+    /* Removed background-color change */
 }
 
 .index-card .card-body {
+    padding: 2rem; /* More padding */
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    padding: 2.5rem; /* Increased padding */
-    text-align: center;
-    position: relative;
-    z-index: 1;
+    justify-content: center; /* Center content vertically too */
+    min-height: 250px; /* Ensure cards have a minimum height */
+    position: relative; /* Ensure content is above pseudo-element */
+    z-index: 2;
 }
 
 .index-card .index-icon-wrapper {
-    width: 80px; /* Circle size */
-    height: 80px;
+    width: 70px;
+    height: 70px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    margin-bottom: 1.5rem;
-    transition: transform 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55); /* Bouncy transition */
-    position: relative;
+    margin-bottom: 1.5rem !important; /* Ensure spacing, important might be needed */
+    background-color: rgba(var(--bs-primary-rgb), 0.1); /* Default light purple */
+    transition: background-color 0.3s ease;
 }
-/* Specific background colors for icon wrappers */
+
 .icon-bg-primary { background-color: rgba(var(--bs-primary-rgb), 0.15); }
 .icon-bg-info { background-color: var(--bs-info-light); }
 .icon-bg-success { background-color: var(--bs-success-light); }
 .icon-bg-warning { background-color: var(--bs-warning-light); }
 
 .index-card .index-icon {
-    font-size: 2.8rem; /* Slightly smaller icon itself */
-    line-height: 1; 
+    font-size: 2.5rem;
+    transition: color 0.3s ease;
+    color: var(--bs-primary); /* Default icon color */
 }
 
-/* Icon color matching the theme */
 .index-card .text-primary { color: var(--bs-primary) !important; }
 .index-card .text-info { color: var(--bs-info) !important; }
 .index-card .text-success { color: var(--bs-success) !important; }
 .index-card .text-warning { color: var(--bs-warning) !important; }
 
-.index-card:hover .index-icon-wrapper {
-    transform: scale(1.2) rotate(-15deg); /* Icon animation on hover - more dramatic */
-}
-
-/* Background gradient on hover */
 .index-card::before {
     content: '';
     position: absolute;
-    top: 0; left: 0; right: 0; bottom: 0;
-    background: linear-gradient(135deg, rgba(255,255,255,0) 70%, var(--hover-gradient-color, rgba(var(--bs-primary-rgb), 0.1)) 100%);
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg, var(--hover-gradient-color, transparent), transparent);
     opacity: 0;
-    transition: opacity 0.4s ease;
-    z-index: 0;
-    border-radius: inherit; /* Inherit border radius */
+    transition: opacity 0.4s ease-in-out;
+    z-index: 1;
+    border-radius: inherit; /* Match card radius */
 }
-/* Define hover gradient colors per card type */
+
 .index-card.hover-primary:hover::before { --hover-gradient-color: rgba(var(--bs-primary-rgb), 0.15); opacity: 1; }
 .index-card.hover-info:hover::before { --hover-gradient-color: rgba(var(--bs-info-rgb, 13 202 240), 0.15); opacity: 1; }
 .index-card.hover-success:hover::before { --hover-gradient-color: rgba(var(--bs-success-rgb, 25 135 84), 0.15); opacity: 1; }
 .index-card.hover-warning:hover::before { --hover-gradient-color: rgba(var(--bs-warning-rgb, 255 193 7), 0.15); opacity: 1; }
 
 .index-card .card-title {
-    margin-bottom: 0.75rem;
+    font-size: 1.4rem; /* Larger title */
     font-weight: 600;
-    font-size: 1.3rem;
+    margin-bottom: 0.75rem;
 }
 
 .index-card .card-text {
-    color: #6c757d;
-    margin-bottom: 1.8rem;
-    min-height: 45px; 
+    color: #555;
+    margin-bottom: 1.5rem; /* More space before button */
+    font-size: 0.95rem;
 }
 
 .index-card .btn {
-    margin-top: auto; 
-    padding: 0.7rem 1.5rem; /* Larger buttons */
-    position: relative; /* Ensure z-index works */
-    z-index: 2; /* Keep button above pseudo-elements */
+    padding: 0.7rem 1.8rem; /* Larger button */
+    font-size: 1rem;
+    /* transition: transform 0.2s ease; */ /* Keep default transition or remove if pulse is used */
 }
 
-/* New Entry Animation: Scale, Rotate, Fade In */
+/* .index-card .btn:hover {
+    transform: scale(1.05); /* Slight scale on hover */
+/* } */
+
 @keyframes scaleRotateFadeIn {
     from {
         opacity: 0;
-        transform: scale(0.8) rotate(-10deg);
+        transform: scale(0.8) rotate(-15deg);
     }
     to {
         opacity: 1;
@@ -440,188 +444,171 @@ body::before {
 .scale-rotate-fade-in {
     opacity: 0; /* Start hidden */
     animation: scaleRotateFadeIn 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+    animation-fill-mode: forwards;
 }
 
-/* Keep delays */
 .delay-1 { animation-delay: 0.1s; }
 .delay-2 { animation-delay: 0.25s; } /* Increase delay difference */
 .delay-3 { animation-delay: 0.4s; }
 .delay-4 { animation-delay: 0.55s; }
 
 
-/* Responsive adjustments */
+/* Responsive adjustments for Index page */
 @media (max-width: 992px) { /* Adjust for 2x2 grid */
     .index-card .card-body {
-        padding: 2rem;
+        min-height: 220px;
     }
     .index-card .index-icon-wrapper {
-        width: 70px;
-        height: 70px;
+        width: 60px;
+        height: 60px;
     }
     .index-card .index-icon {
-        font-size: 2.5rem;
+        font-size: 2rem;
     }
 }
 @media (max-width: 768px) {
     .index-title {
         font-size: 2.2rem;
-        margin-bottom: 3rem !important;
+        margin-bottom: 2rem;
     }
-     /* Keep 2 columns on medium screens */
+
 }
 @media (max-width: 576px) {
-    /* Stack to 1 column on small screens */
+
     .index-card {
-        margin-bottom: 1.5rem; /* Add space between stacked cards */
+        margin-bottom: 1.5rem; /* Add space between cards when stacked */
+    }
+    .index-card .card-body {
+        min-height: auto; /* Allow height to adjust */
+        padding: 1.5rem;
     }
 }
 
-/* Index Page Specific Styles - Major Overhaul */
 .logo-container {
-    padding: 10px;
-    background-color: rgba(var(--bs-primary-rgb), 0.1);
-    width: 100px;
-    height: 100px;
-    border-radius: 50%;
-    margin-left: auto;
-    margin-right: auto;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: 0 4px 15px rgba(var(--bs-primary-rgb), 0.2);
+    margin-bottom: 2rem;
+    padding: 1rem;
+    /* background: linear-gradient(135deg, rgba(var(--bs-primary-rgb), 0.1), rgba(var(--bs-primary-rgb), 0.05)); */
+    /* display: inline-block; */
+    /* border-radius: 50%; */
+    /* Optional: Add a border */
+    /* border: 2px solid rgba(var(--bs-primary-rgb), 0.2); */
+    /* Optional: Shadow */
+    /* box-shadow: 0 4px 15px rgba(111, 66, 193, 0.1); */
 }
 
 .logo-icon {
-    font-size: 3.5rem; /* Adjust icon size */
-    line-height: 1;
+    font-size: 4rem; /* Larger logo icon */
+    color: var(--bs-primary);
 }
 
-/* Wrapper for assessment page centering */
+/* Assessment Page Styles */
 .assessment-wrapper {
-    display: flex;
-    align-items: center; /* Vertical center */
-    justify-content: center; /* Horizontal center */
-    min-height: 100vh; /* Full viewport height */
-    padding: 2rem 0; /* Add some padding top/bottom */
+    /* background-color: #ffffff; */
+    /* padding: 3rem; */
+    /* border-radius: 1rem; */
+    /* box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08); */
+    /* Instead of a wrapper background, style the content directly */
+    /* Removed wrapper background, padding, border-radius, shadow */
+    /* Rely on card styling or direct element styling */
+    max-width: 800px; /* Limit width for single column */
+    margin: 2rem auto; /* Center the container with top/bottom margin */
 }
 
-/* Assessment Page Specific Styles */
-/* Remove or adjust old styles for #userInfoForm.card if they conflict */
-/*
-#userInfoForm.card {
-    background-color: rgba(255, 255, 255, 0.95);
-    border: 1px solid rgba(0,0,0,0.05);
-    margin-bottom: 2.5rem;
-}
-
-#userInfoForm .card-header {
-     background-color: var(--bs-primary);
-     color: white;
-     border-bottom: none;
-}
-*/
-
-/* New container style */
+/* Style for the setup/info section */
 .assessment-setup-container {
-    /* Uses bg-white, rounded-3, shadow-sm from HTML */
-    border: 1px solid #e9ecef; /* Subtle border */
+    padding: 2.5rem;
+    background: rgba(255, 255, 255, 0.4); /* Semi-transparent background */
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-radius: 1rem;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    margin-bottom: 2rem;
+    /* border: 1px solid #dee2e6; */ /* Lighter border */
+    /* border-radius: 0.5rem; */
 }
 
 .assessment-setup-container .border-end-lg {
-    border-color: #dee2e6 !important;
+     border-right: none !important; /* Remove the vertical line in single column */
 }
 
 .assessment-setup-container h3 {
-    color: var(--bs-primary);
+     margin-bottom: 1.5rem;
 }
-
 .assessment-setup-container h5 {
-    color: #6c757d; /* Ensure consistency */
-    font-weight: 400; /* Ensure consistency */
-    padding-bottom: 0.5rem;
-    /* border-bottom: 1px solid #eee; */ /* Optional */
+     margin-bottom: 1rem;
+     font-weight: 500;
+     color: #495057;
 }
 
-/* Apply to labels within the new container */
+
+/* Style for form labels and inputs */
 .assessment-setup-container .form-label {
     font-weight: 500;
-    color: #495057;
-    margin-bottom: 0.6rem;
-}
-
-/* Style larger form controls used in the new layout */
-.form-control-lg,
-.form-select-lg {
-    padding: 0.8rem 1.2rem;
-    font-size: 1.1rem;
-    border-radius: 0.4rem; /* Consistent radius */
-}
-
-#sectionSelection {
-    margin-top: 2rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid #eee;
+    margin-bottom: 0.5rem;
 }
 
 #sectionSelection h6 {
+    margin-bottom: 1rem;
+    color: #333;
     font-weight: 600;
-    color: var(--bs-primary);
 }
 
-/* Simplified Module Selection Cards */
+/* Section cards */
 #sectionCards .card {
-    box-shadow: none;
-    border: 1px solid #e0e0e0;
-    background-color: var(--bs-light);
-    border-radius: 0.6rem; /* Smaller radius for these */
-    margin-bottom: 0.5rem; /* Space between module cards */
+    background-color: rgba(255, 255, 255, 0.6); /* Slightly more opaque for readability */
+    /* border: 1px solid #e9ecef; */
+    /* border-radius: 0.6rem; */
+    margin-bottom: 1rem;
+    /* box-shadow: 0 2px 5px rgba(0,0,0,0.05); */
 }
+
 #sectionCards .card .card-body {
-    padding: 1rem;
+    padding: 1.2rem;
 }
 #sectionCards .card .card-title {
     font-size: 1rem;
     margin-bottom: 0.5rem;
 }
 #sectionCards .card .card-text {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     margin-bottom: 0.8rem;
 }
 #sectionCards .card .input-group-sm .form-control {
-     height: calc(1.5em + 0.5rem + 2px);
-     padding: 0.25rem 0.5rem;
-     font-size: 0.875rem;
+    height: calc(1.5em + 0.5rem + 2px);
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    border-radius: 0.2rem;
 }
 
-/* Start Button Section Styling */
+/* Separator line before button */
 .assessment-setup-container .border-top {
-    border-color: #e9ecef !important;
+     margin-top: 2rem;
+     padding-top: 1.5rem;
 }
-
+/* Start button styling */
 #startBtn {
-    /* Larger button style already applied in HTML (btn-lg) */
-    font-weight: 600; 
-    transition: background-color 0.15s ease-in-out, border-color 0.15s ease-in-out, box-shadow 0.15s ease-in-out;
+    padding: 0.8rem 2rem;
+    font-size: 1.1rem;
+    width: 100%;
 }
 
 #startBtn:disabled {
-    /* Override Bootstrap's default disabled styles */
+    /* background-color: #ccc; */ /* Default Bootstrap disabled style is often sufficient */
+    /* border-color: #ccc; */
+    /* cursor: not-allowed; */
+    /* Ensure the purple background remains when disabled */
     background-color: var(--bs-primary) !important; /* Force purple background */
-    border-color: var(--bs-primary) !important;     /* Force purple border */
-    color: white !important;                      /* Force white text */
-    opacity: 1 !important;                       /* Force full opacity */
-    /* Keep cursor as default or not-allowed? Let's keep default for visual consistency */
-    cursor: default; 
-    /* Remove or override any pointer-events: none; if Bootstrap adds it */
-    pointer-events: auto !important; /* Ensure it *looks* clickable, even if JS prevents action */
+    border-color: var(--bs-primary) !important; /* Force purple border */
+    opacity: 0.65; /* Use opacity to indicate disabled state */
+    color: white !important; /* Ensure text remains white */
 }
 
-/* Ensure assessment area below has white background */
+/* Style for the assessment area after starting */
 #assessmentArea .card {
-    background-color: #ffffff;
+     margin-bottom: 1.5rem;
 }
 
-/* Animation (keep existing) */
 @keyframes slideFadeInDown {
     from {
         opacity: 0;
@@ -634,168 +621,157 @@ body::before {
 }
 
 .slide-fade-in-down {
-    animation: slideFadeInDown 0.6s ease-out forwards;
+    animation: slideFadeInDown 0.5s ease-out forwards;
 }
 
-/* Assessment Area Specific Styles */
 #assessmentArea {
-    /* Add some top margin */
-    margin-top: 2rem;
+    display: none; /* Hidden by default */
 }
 
+/* Navigation Styles */
 #questionNav {
     position: sticky;
     top: 1rem; /* Adjust as needed */
-    max-height: calc(100vh - 4rem); /* Adjust based on header/footer */
+    max-height: calc(100vh - 2rem); /* Limit height */
     overflow-y: auto;
-    padding: 0;
+    padding-right: 10px; /* Space for scrollbar */
 }
 
 .question-nav-item {
-    display: block;
-    padding: 0.5rem 0.75rem;
-    margin-bottom: 5px;
-    text-decoration: none;
-    border: 1px solid #dee2e6; 
-    border-radius: 0.3rem;
-    background-color: #f8f9fa; /* Default light background */
-    color: #495057; /* Default dark text */
-    text-align: center;
-    font-size: 0.85rem;
-    transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px; /* Square size */
+    height: 40px;
+    border-radius: 50%; /* Circular */
+    margin: 5px;
+    font-weight: 500;
     cursor: pointer;
+    border: 1px solid #ced4da;
+    background-color: #fff;
+    color: #495057;
+    transition: all 0.3s ease;
+    font-size: 0.9rem;
 }
 
 .question-nav-item:hover {
     background-color: #e9ecef;
     border-color: #adb5bd;
-    color: #212529;
+    transform: scale(1.05);
 }
 
-/* Style for answered questions */
-#questionNavButtons > .question-nav-item.answered,
-#assessmentArea #questionNavButtons .btn.answered, /* Also target if it's a button with .answered */
-#assessmentArea #questionNavButtons .btn.btn-success /* Also target if .answered adds .btn-success */
-{
-    background-color: var(--bs-success) !important; /* Force Green background */
-    color: white !important; /* Force White text */
-    border-color: var(--bs-success) !important; /* Force Green border */
-}
-
-#questionNavButtons > .question-nav-item.answered:hover,
-#assessmentArea #questionNavButtons .btn.answered:hover, 
-#assessmentArea #questionNavButtons .btn.btn-success:hover
-{
-    background-color: #157347 !important; /* Darker green on hover */
-    border-color: #146c43 !important;
-    color: white !important;
-}
-
-/* Style for the currently active question */
-/* Enhance specificity */
-#questionNavButtons > .question-nav-item.active,
-#assessmentArea #questionNavButtons .btn.active
-{
-    background-color: var(--bs-primary) !important; /* Purple background */
-    color: white !important; /* White text */
-    border-color: var(--bs-primary) !important;
+/* --- Answered and Active Styles --- */
+/* Base style for answered items */
+#questionNavButtons > .question-nav-item.answered {
+    background-color: #d1e7dd !important; /* Light green background */
+    border-color: #b1dfca !important; /* Slightly darker green border */
+    color: #0f5132 !important; /* Dark green text */
     font-weight: bold;
-    box-shadow: 0 0 8px rgba(var(--bs-primary-rgb), 0.4);
 }
 
-/* Ensure active state overrides answered state visually if both classes are present */
-#questionNavButtons > .question-nav-item.active,
-#questionNavButtons > .question-nav-item.active:hover,
-#assessmentArea #questionNavButtons .btn.active,
-#assessmentArea #questionNavButtons .btn.active:hover 
-{
-    /* Styles already defined above with !important, should be sufficient */
-    /* Ensure no conflicting styles below this point */
+/* Hover style for answered items */
+#questionNavButtons > .question-nav-item.answered:hover {
+    background-color: #badbcc !important; /* Darker green on hover */
+    border-color: #a7d1b9 !important;
+    transform: scale(1.05);
 }
 
 
-#questionContent {
-    /* Styles for the main question display area */
+/* Base style for the active item (overrides answered) */
+#questionNavButtons > .question-nav-item.active {
+    background-color: var(--bs-primary) !important; /* Purple background */
+    border-color: var(--bs-primary) !important; /* Purple border */
+    color: white !important; /* White text */
+    font-weight: bold;
+    transform: scale(1.1); /* Make active item slightly larger */
+    box-shadow: 0 0 10px rgba(var(--bs-primary-rgb), 0.5); /* Purple glow */
 }
 
-/* Metro Line Navigation Styles */
+/* Hover style for the active item (should be same as active) */
+#questionNavButtons > .question-nav-item.active:hover {
+     background-color: var(--bs-primary) !important;
+     border-color: var(--bs-primary) !important;
+     color: white !important;
+     transform: scale(1.1); /* Keep size */
+     box-shadow: 0 0 12px rgba(var(--bs-primary-rgb), 0.6); /* Slightly stronger glow */
+}
+
+/* Question Content Area */
+/* Styles for the main question display area */
+
+/* Metro Style Navigation */
 .page-navigation-metro {
-    margin: 2rem 0 2.5rem 0; /* Add some vertical spacing */
-    padding: 0.8rem 0;
-    background: rgba(255, 255, 255, 0.2); /* Subtle glass background for the bar */
-    backdrop-filter: blur(5px);
-    -webkit-backdrop-filter: blur(5px);
-    border-radius: 50px; /* Rounded ends for the bar */
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+    background-color: #f8f9fa; /* Light background */
+    padding: 10px 0;
+    border-bottom: 1px solid #e0e0e0;
+    margin-bottom: 1.5rem;
+    border-radius: 8px;
     overflow: hidden;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
 }
 
 .page-navigation-metro ul {
-    display: flex;
-    align-items: center;
-    justify-content: space-around; /* Distribute items evenly */
-    padding: 0 1rem; /* Padding inside the bar */
-    margin: 0;
     list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    justify-content: space-around; /* Distribute items evenly */
+    align-items: center;
 }
 
 .page-navigation-metro li {
-    position: relative;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    position: relative; /* For line pseudo-elements if needed */
 }
 
-/* Connecting Line Style */
 .page-navigation-metro li.line {
-    flex-grow: 1; /* Take up space between stations */
-    height: 4px; /* Line thickness */
-    background: linear-gradient(90deg, rgba(var(--bs-primary-rgb), 0.3), rgba(var(--bs-primary-rgb), 0.6)); /* Gradient line */
-    margin: 0 -15px; /* Overlap slightly with station markers conceptually */
-    border-radius: 2px;
+    height: 2px;
+    background-color: #ced4da; /* Line color */
+    flex-grow: 1; /* Line takes up available space */
+    margin: 0 10px; /* Space around the line */
+    min-width: 30px; /* Ensure line is visible on small screens */
 }
 
-/* Station Marker Style */
 .page-navigation-metro li.station .station-link {
     display: flex;
     flex-direction: column; /* Stack icon and label */
     align-items: center;
     text-decoration: none;
-    color: #555; /* Default station color */
-    position: relative;
-    padding: 0.3rem;
+    color: #6c757d; /* Default color */
+    padding: 5px 15px;
+    border-radius: 4px;
+    transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .page-navigation-metro li.station .station-icon {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background-color: #e9ecef; /* Icon background */
     display: flex;
-    justify-content: center;
     align-items: center;
-    width: 40px; /* Size of the station marker */
-    height: 40px;
-    background-color: #e9ecef; /* Default station background */
-    border: 2px solid #ced4da; /* Default border */
-    border-radius: 50%; /* Circular station */
-    margin-bottom: 0.4rem; /* Space between icon and label */
-    transition: all 0.3s ease;
-    z-index: 2; /* Make sure icon is above the line */
-    position: relative; /* Needed for z-index */
+    justify-content: center;
+    margin-bottom: 5px;
+    transition: background-color 0.3s ease, transform 0.2s ease;
 }
 
 .page-navigation-metro li.station .station-icon i {
-    font-size: 1.1rem; 
+    font-size: 1.4rem;
     color: #6c757d; /* Default icon color */
-}
-
-.page-navigation-metro li.station .station-label {
-    font-size: 0.75rem;
-    font-weight: 500;
     transition: color 0.3s ease;
 }
 
-/* Hover effect for stations */
+.page-navigation-metro li.station .station-label {
+    font-size: 0.8rem;
+    font-weight: 500;
+    text-align: center;
+    transition: color 0.3s ease;
+}
+
 .page-navigation-metro li.station .station-link:hover .station-icon {
-    background-color: #d8dde2;
-    border-color: #adb5bd;
-    transform: scale(1.1);
+    background-color: #dee2e6;
+    transform: scale(1.05);
 }
 
 .page-navigation-metro li.station .station-link:hover .station-icon i {
@@ -808,55 +784,52 @@ body::before {
 
 /* Active Station Style */
 .page-navigation-metro li.station.active-station .station-icon {
-    background-color: var(--bs-primary); /* Purple background */
-    border-color: #56319b; /* Darker purple border */
-    transform: scale(1.15); /* Make active station slightly larger */
-    box-shadow: 0 0 12px rgba(var(--bs-primary-rgb), 0.5);
+    background-color: var(--bs-primary); /* Active icon background */
+    box-shadow: 0 0 8px rgba(var(--bs-primary-rgb), 0.4);
+    transform: scale(1.1);
 }
 
 .page-navigation-metro li.station.active-station .station-icon i {
-    color: white; /* White icon */
+    color: white; /* Active icon color */
 }
 
 .page-navigation-metro li.station.active-station .station-label {
-    color: var(--bs-primary); /* Purple label */
-    font-weight: 600;
+    color: var(--bs-primary); /* Active label color */
+    font-weight: bold;
 }
 
-/* Optional: Responsive adjustments */
+/* Responsive adjustments for Metro Nav */
 @media (max-width: 768px) {
     .page-navigation-metro ul {
-        padding: 0 0.5rem;
+        justify-content: center; /* Center items */
     }
     .page-navigation-metro li.line {
-        margin: 0 -10px;
+        display: none; /* Hide lines on smaller screens */
     }
     .page-navigation-metro li.station .station-icon {
-        width: 35px;
-        height: 35px;
+        width: 40px;
+        height: 40px;
     }
     .page-navigation-metro li.station .station-icon i {
-        font-size: 1rem;
+        font-size: 1.2rem;
     }
     .page-navigation-metro li.station .station-label {
-        font-size: 0.7rem;
+        display: none; /* Hide labels on smaller screens */
     }
 }
 @media (max-width: 576px) {
     .page-navigation-metro li.station .station-label {
-         display: none; /* Hide labels on very small screens */
+        display: none;
     }
      .page-navigation-metro li.line {
-        margin: 0 -5px;
-    }
+        display: none;
+     }
      .page-navigation-metro ul {
-        justify-content: space-between; /* Adjust justification */
-    }
+        flex-wrap: wrap; /* Allow items to wrap */
+        justify-content: center;
+     }
 }
 
+/* Ensure QuestionContent has some basic styling if needed */
 
-#questionContent {
-    /* Styles for the main question display area */
-}
-
-/* ... potentially more styles ... */ 
+/* ... potentially more styles ... */
