@@ -112,26 +112,56 @@ function displayRecords() {
     const rankings = calculateRankings(filteredRecords);
 
     pageRecords.forEach((record, index) => {
-        // ... (durationText calculation remains the same)
+        // **** 使用 totalActiveSeconds 来计算并格式化时长 ****
         let durationText = 'N/A';
-        if (record.duration !== undefined) {
-            const hours = Math.floor(record.duration / 60);
-            const minutes = record.duration % 60;
-            durationText = '';
-            if (hours > 0) {
-                durationText += `${hours}小时`;
+        if (record.totalActiveSeconds !== undefined && record.totalActiveSeconds !== null && record.status !== 'paused') {
+            const totalSeconds = record.totalActiveSeconds;
+            if (totalSeconds < 60) {
+                durationText = `${totalSeconds}秒`;
+            } else {
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                durationText = `${minutes}分`;
+                if (seconds > 0) {
+                    durationText += ` ${seconds}秒`;
+                }
             }
-            if (minutes > 0 || hours === 0) {
-                durationText += `${minutes}分钟`;
-            }
-             if (durationText === '') durationText = '0分钟'; // Handle case where duration is 0
+        } else if (record.status === 'paused') {
+            durationText = `<span class="badge bg-warning text-dark">暂存中</span>`;
         }
+        // **** 结束时长格式化修改 ****
 
         const tr = document.createElement('tr');
         tr.className = 'fade-in';
-        // **** 使用 record.score.totalScore 和 record.score.scoreRate ****
-        const totalScore = record.score?.totalScore !== undefined ? record.score.totalScore : 0;
-        const scoreRate = record.score?.scoreRate !== undefined ? record.score.scoreRate : 0;
+        // **** 使用 record.score?.totalScore 和 record.score?.scoreRate ****
+        const totalScore = record.status !== 'paused' ? (record.score?.totalScore !== undefined ? record.score.totalScore : 0) : '-';
+        const scoreRate = record.status !== 'paused' ? (record.score?.scoreRate !== undefined ? record.score.scoreRate : 0) : '-';
+        const scoreRateBadge = record.status !== 'paused' ? 
+            `<span class="badge ${getScoreRateClass(scoreRate)}">${scoreRate}%</span>` : 
+            `<span class="badge bg-secondary">-</span>`;
+
+        // **** 根据状态动态生成按钮 ****
+        let actionButtons = '';
+        if (record.status === 'paused') {
+            actionButtons = `
+                <button class="btn btn-sm btn-warning" onclick="resumeAssessment('${record.id}')">
+                    <i class="bi bi-play-circle me-1"></i>继续测评
+                </button>
+            `;
+        } else {
+            actionButtons = `
+                <button class="btn btn-sm btn-primary" onclick="showDetail('${record.id}')">
+                    <i class="bi bi-eye me-1"></i>查看详情
+                </button>
+            `;
+        }
+        // 添加删除按钮
+        actionButtons += `
+             <button class="btn btn-sm btn-danger ms-1" onclick="deleteHistoryRecord('${record.id}')">
+                 <i class="bi bi-trash"></i> 删除
+             </button>
+        `;
+
         tr.innerHTML = `
             <td>${start + index + 1}</td>
             <td>${rankings.get(record.id) || 'N/A'}</td>
@@ -141,19 +171,8 @@ function displayRecords() {
             <td>${getPositionName(record.position || record.userInfo?.position)}</td>
             <td>${durationText}</td>
             <td>${totalScore}</td>
-            <td>
-                <span class="badge ${getScoreRateClass(scoreRate)}">
-                    ${scoreRate}%
-                </span>
-            </td>
-            <td>
-                <button class="btn btn-sm btn-primary" onclick="showDetail('${record.id}')">
-                    <i class="bi bi-eye me-1"></i>查看详情
-                </button>
-                 <button class="btn btn-sm btn-danger ms-1" onclick="deleteHistoryRecord('${record.id}')">
-                     <i class="bi bi-trash"></i> 删除
-                 </button>
-            </td>
+            <td>${scoreRateBadge}</td>
+            <td>${actionButtons}</td>
         `;
         tbody.appendChild(tr);
     });
@@ -856,6 +875,45 @@ function exportHistoryList() {
     } catch (error) {
         console.error("[exportHistoryList] 导出 Excel 时出错:", error);
         alert("导出失败，请查看控制台获取更多信息。");
+    }
+}
+
+// **** 新增：继续测评函数 ****
+function resumeAssessment(id) {
+    console.log(`Resuming assessment with ID: ${id}`);
+    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    // 使用非严格比较 (==) 以防类型不匹配
+    const assessmentToResume = history.find(record => record.id == id && record.status === 'paused');
+
+    if (assessmentToResume) {
+        // 检查是否有正在进行的测评，如果需要，可以提示用户
+        if (localStorage.getItem('currentAssessment')) {
+            if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
+                return; // 用户取消
+            }
+        }
+
+        // 将选中的测评记录存入 currentAssessment
+        localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
+        
+        // 从历史记录中移除暂存状态（或者保留，取决于设计）
+        // 选项1：移除（测评完成后会重新添加）
+        const updatedHistory = history.filter(record => record.id != id);
+        localStorage.setItem('assessmentHistory', JSON.stringify(updatedHistory));
+        
+        // 选项2：保留，但标记为 'resumed' 或类似状态（如果需要追踪）
+        // const existingIndex = history.findIndex(record => record.id == id);
+        // if (existingIndex > -1) {
+        //     history[existingIndex].status = 'resumed'; // Update status
+        //     localStorage.setItem('assessmentHistory', JSON.stringify(history));
+        // }
+
+        console.log("Assessment data loaded into currentAssessment. Redirecting to assessment page...");
+        window.location.href = 'assessment.html'; // 跳转到测评页面
+    } else {
+        console.error(`无法找到 ID 为 ${id} 的可继续的测评记录。`);
+        alert("无法继续测评，记录可能已被删除或状态已改变。");
+        loadHistoryRecords(); // 刷新列表以防万一
     }
 }
 

@@ -40,17 +40,27 @@ function loadResultData() {
     document.getElementById('assessorName').textContent = record.assessor || '未记录'; // 读取 assessor
     document.getElementById('assessmentTimestamp').textContent = formatDate(record.timestamp || record.endTime, true); // 使用带时间的格式
     
+    // **** 修改：使用 totalActiveSeconds 计算时长 ****
     let durationText = 'N/A';
-    if (record.duration !== undefined) {
-        const hours = Math.floor(record.duration / 60);
-        const minutes = record.duration % 60;
-        durationText = '';
-        if (hours > 0) durationText += `${hours}小时 `;
-        if (minutes > 0 || hours === 0) durationText += `${minutes}分钟`;
-        if (durationText === '') durationText = '0分钟';
+    if (record.totalActiveSeconds !== undefined && record.totalActiveSeconds !== null) {
+        const totalSeconds = record.totalActiveSeconds;
+        if (totalSeconds < 60) {
+            durationText = `${totalSeconds}秒`;
+        } else {
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            durationText = `${minutes}分`;
+            if (seconds > 0) {
+                durationText += ` ${seconds}秒`;
+            }
+        }
+    } else if (record.duration !== undefined) { // Fallback to duration if totalActiveSeconds is missing (for older records)
+         const minutes = record.duration;
+         durationText = `${minutes}分钟`;
     }
     document.getElementById('assessmentDuration').textContent = durationText;
-
+    // **** 结束时长计算修改 ****
+    
     // 填充得分信息 (使用嵌套 score 对象)
     document.getElementById('totalScore').textContent = record.score.totalScore !== undefined ? record.score.totalScore : 'N/A';
     document.getElementById('standardScore').textContent = record.score.maxScore !== undefined ? record.score.maxScore : 'N/A'; // 使用 maxScore

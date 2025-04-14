@@ -15,10 +15,12 @@ document.addEventListener('DOMContentLoaded', function() {
 function initializeSystem() {
     // 检查本地存储中是否有题库
     if (!localStorage.getItem('questionBank')) {
-        initializeQuestionBank();
+        // initializeQuestionBank(); // <--- 确保这一行被注释掉了
+        console.log("No question bank found in localStorage. Initializing as empty."); // (这行可选，用于确认)
+        localStorage.setItem('questionBank', '[]'); // (这行可选，用于初始化空题库)
     }
     // **** 新增：初始化时也更新岗位映射 ****
-    updateAndSaveJobPositions(); 
+    updateAndSaveJobPositions();
 }
 
 // 初始化题库

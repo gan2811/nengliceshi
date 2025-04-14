@@ -158,27 +158,30 @@
                 <div id="positionTabsContainer" class="mb-4">
                     <!-- 岗位标签将由 JavaScript 动态生成 -->
                 </div>
-                 <button class="btn btn-outline-danger position-btn mb-3" onclick="clearQuestionsByPosition()">
+                 <!-- **** 移除这个多余的清空按钮 **** -->
+                 <!-- <button class="btn btn-outline-danger position-btn mb-3" onclick="clearQuestionsByPosition()">
                      <i class="bi bi-trash me-1"></i>清空当前岗位题库
-                 </button>
+                 </button> -->
 
-                <!-- 工具栏 -->
-                <div class="row mb-3">
-                    <div class="col-md-8">
-                        <button class="btn btn-success me-2" onclick="showAddQuestionModal()">
+                <!-- 工具栏 (优化布局) -->
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap"> 
+                    <!-- 左侧操作按钮 -->
+                    <div class="d-flex flex-wrap gap-2 mb-2 mb-md-0"> 
+                        <button class="btn btn-success" onclick="showAddQuestionModal()">
                             <i class="bi bi-plus-circle"></i> 添加题目
                         </button>
-                        <button class="btn btn-info text-white me-2" onclick="importQuestions()">
+                        <button class="btn btn-info text-white" onclick="importQuestions()">
                             <i class="bi bi-file-earmark-arrow-up"></i> 批量导入
                         </button>
-                        <button class="btn btn-secondary me-2" onclick="downloadTemplate()">
-                            <i class="bi bi-download"></i> 下载模板
-                        </button>
-                        <button class="btn btn-warning text-white" onclick="exportQuestions()">
+                        <button class="btn btn-warning text-dark" onclick="exportQuestions()"> <!-- Changed color to warning/dark text -->
                             <i class="bi bi-file-earmark-arrow-down"></i> 导出题库
                         </button>
+                        <button class="btn btn-outline-danger ms-md-3" onclick="clearQuestionsByPosition()"> <!-- Added margin for separation -->
+                             <i class="bi bi-trash"></i> 清空当前岗位题库
+                         </button>
                     </div>
-                    <div class="col-md-4">
+                    <!-- 右侧搜索框 -->
+                    <div style="min-width: 250px;"> <!-- Ensure search doesn't get too small -->
                         <div class="input-group">
                             <input type="text" class="form-control" id="searchInput" placeholder="搜索题目...">
                             <button class="btn btn-outline-secondary" type="button" onclick="searchQuestions()">
@@ -277,26 +280,36 @@
         </div>
     </div>
 
-    <!-- 导入模态框 -->
+    <!-- 导入模态框 (美化版) -->
     <div class="modal fade" id="importModal" tabindex="-1">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title">批量导入题目</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-light border-bottom-0">
+                    <h5 class="modal-title text-primary"><i class="bi bi-file-earmark-arrow-up me-2"></i>批量导入题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
                 </div>
-                <div class="modal-body">
-                    <div class="mb-3">
-                        <label for="importFile" class="form-label">选择Excel文件</label>
-                        <input class="form-control" type="file" id="importFile" accept=".xlsx,.xls,.csv">
+                <div class="modal-body p-4">
+                    <input class="d-none" type="file" id="importFile" accept=".xlsx,.xls,.csv" onchange="displaySelectedFileName(this)">
+                    
+                    <label for="importFile" class="form-label">选择或拖拽 Excel 文件</label>
+                    <div id="dropZone" class="border rounded p-4 text-center mb-3" style="cursor: pointer; background-color: #f8f9fa; border-style: dashed !important;">
+                        <i class="bi bi-cloud-arrow-up-fill text-secondary fs-1 mb-2"></i>
+                        <p class="mb-1">将文件拖拽到此处，或</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('importFile').click();">点击选择文件</button>
+                        <p id="selectedFileName" class="mt-2 text-muted small"></p>
                     </div>
-                    <div class="alert alert-info">
-                        <i class="bi bi-info-circle"></i> 请确保文件格式正确，可先下载模板查看格式要求。
+
+                    <div class="alert alert-info d-flex align-items-center">
+                        <i class="bi bi-info-circle flex-shrink-0 me-2"></i>
+                        <div>
+                            请确保文件格式正确。
+                            <a href="#" onclick="downloadTemplate(event)" class="alert-link">点击此处下载模板</a> 查看格式要求。
+                        </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
-                    <button type="button" class="btn btn-primary" onclick="processImport()">导入</button>
+                <div class="modal-footer border-top-0 bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>取消</button>
+                    <button type="button" class="btn btn-primary" id="importProcessBtn" onclick="processImport()" disabled><i class="bi bi-check-lg me-1"></i>导入</button>
                 </div>
             </div>
         </div>

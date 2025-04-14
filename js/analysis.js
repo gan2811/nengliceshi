@@ -149,10 +149,16 @@ document.addEventListener('DOMContentLoaded', function() {
         loadEmployeeList();
     }
 
-    // 绑定标签页切换事件 (保持不变)
+    // **** 在监听器顶部获取所有需要的按钮引用 ****
     const positionTab = document.getElementById('position-tab');
     const individualTab = document.getElementById('individual-tab');
+    const exportQuestionBankBtn = document.getElementById('exportQuestionBankBtn');
+    const exportHistoryBtn = document.getElementById('exportHistoryBtn');
+    const exportPausedBtn = document.getElementById('exportPausedBtn');
+    const importBtn = document.getElementById('importDataBtn');
+    const fileInput = document.getElementById('importFileInput');
 
+    // 绑定标签页切换事件
     if (positionTab) {
         positionTab.addEventListener('shown.bs.tab', function () {
             loadPositionAnalysis();
@@ -160,32 +166,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     if (individualTab) {
          individualTab.addEventListener('shown.bs.tab', function () {
-             // 切换到个人标签时，只需要确保员工列表已加载
-             // 不需要在这里直接调用 loadIndividualAnalysis 或 loadEmployeeAssessments
-             // 用户选择员工后会触发后续加载
-             if (!allEmployees || allEmployees.length === 0) { // 确保员工列表已加载
+             if (!allEmployees || allEmployees.length === 0) { 
                 loadEmployeeList(); 
              }
          });
     }
 
-    clearAnalysisDisplay(); // 初始清空
+    clearAnalysisDisplay(); 
     loadPositionList();
     loadEmployeeList();
 
-    // **** 新增：为导入导出按钮添加事件监听 ****
-    const exportBtn = document.getElementById('exportDataBtn');
-    const importBtn = document.getElementById('importDataBtn');
-    const fileInput = document.getElementById('importFileInput');
-
-    if (exportBtn) {
-        exportBtn.addEventListener('click', exportLocalStorageData);
+    // **** 绑定导出/导入按钮事件 ****
+    if (exportQuestionBankBtn) {
+        exportQuestionBankBtn.addEventListener('click', exportQuestionBank);
+    }
+    if (exportHistoryBtn) {
+        exportHistoryBtn.addEventListener('click', exportCompletedHistory);
+    }
+    if (exportPausedBtn) {
+        exportPausedBtn.addEventListener('click', exportPausedAssessments);
     }
     if (importBtn && fileInput) {
-        importBtn.addEventListener('click', () => fileInput.click()); // 点击导入按钮触发文件选择
+        importBtn.addEventListener('click', () => fileInput.click()); 
         fileInput.addEventListener('change', handleFileImport);
     }
-
 });
 
 // --- 岗位分析 ---
@@ -852,11 +856,11 @@ function calculateIndividualQuestionPerformance(record) {
          const knowledgeSource = q.knowledgeSource || null; // 获取知识点来源
 
          // **** 修改：包含 id 和 knowledgeSource ****
-         const questionInfo = {
+             const questionInfo = {
              id: q.id, // 添加 ID
-             content: q.content || '无内容',
+                 content: q.content || '无内容',
              score: '未作答', // 默认未作答
-             standardScore: standardScore,
+                 standardScore: standardScore,
              comment: '', // 默认空备注
              knowledgeSource: knowledgeSource // 添加来源
          };
@@ -867,11 +871,11 @@ function calculateIndividualQuestionPerformance(record) {
 
              if (standardScore > 0) {
                  if (questionInfo.score >= standardScore) { 
-                     performance.best.push(questionInfo);
-                 } else {
-                     performance.worst.push(questionInfo);
-                 }
+                 performance.best.push(questionInfo);
              } else {
+                 performance.worst.push(questionInfo);
+             }
+         } else {
                   // 标准分为0或无效，也归为待提高？
                   performance.worst.push(questionInfo); 
              }
@@ -988,7 +992,7 @@ function renderHistoricalScoresChart(historyData) {
 }
 
 // **** 重构：生成个人培训建议 (V2) ****
-function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
+function generateIndividualTrainingSuggestions(record, relevantHistory = []) { 
     console.log(`[generateIndividualTrainingSuggestions] START. Received record ID: ${record ? record.id : 'N/A'}, relevantHistory count: ${relevantHistory.length}`);
     
     // **** 在函数开头添加日志 ****
@@ -1027,9 +1031,9 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
         const sectionScoreRates = {}; // { sectionName: scoreRate }
         if (sectionPerformance.performance) {
             Object.entries(sectionPerformance.performance).forEach(([section, data]) => {
-                sectionScoreRates[section] = data.max > 0 ? Math.round((data.score / data.max) * 100) : 0;
-            });
-        }
+              sectionScoreRates[section] = data.max > 0 ? Math.round((data.score / data.max) * 100) : 0;
+         });
+     }
         const overallScoreRate = sectionPerformance.totalStandard > 0
             ? Math.round((sectionPerformance.totalAchieved / sectionPerformance.totalStandard) * 100)
             : 0;
@@ -1096,7 +1100,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
         Object.entries(sectionScoreRates).sort(([, rateA], [, rateB]) => rateA - rateB).forEach(([section, scoreRate]) => {
             if (scoreRate < criticalThreshold) {
                 hasCriticalSection = true;
-                suggestions.push({
+              suggestions.push({
                     type: 'section_critical',
                     text: `<strong>重点关注板块：</strong> <strong class="text-danger">${section}</strong> (${scoreRate}%)，掌握程度严重不足，建议安排<strong class="text-danger">系统性培训和专项辅导</strong>。`,
                     icon: 'bi-exclamation-triangle-fill text-danger', priority: 1
@@ -1129,7 +1133,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                                    : '，建议<strong class="text-danger">查找相关资料重点复习</strong>';
                 return `<li class="mb-1">${q.content || '无内容'} ${scoreText}${sourceText}</li>`;
             }).join('');
-            suggestions.push({
+        suggestions.push({
                 type: 'questions_critical',
                 // **** 修改：更新建议文本主体 ****
                 text: `<strong>掌握薄弱题目：</strong>以下题目得分低于 ${criticalThreshold}% 或未作答，请<strong class="text-danger">重点关注</strong>：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`,
@@ -1159,7 +1163,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
         // --- 5. 总体评价与学习方法建议 ---
         console.log("[generateIndividualTrainingSuggestions V2] Step 5: Generating overall evaluation and learning method...");
         if (overallScoreRate < criticalThreshold) {
-           suggestions.push({
+             suggestions.push({
                type: 'overall_critical',
                text: `<strong>总体评价：</strong>本次测评成绩 (${overallScoreRate}%) <strong class="text-danger">偏低</strong>，基础知识和核心技能掌握不足。`,
                icon: 'bi-clipboard-x text-danger', priority: 2
@@ -1211,8 +1215,8 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
 
         // --- 6. 最终检查与默认建议 ---
         console.log("[generateIndividualTrainingSuggestions V2] Step 6: Final checks and default suggestion...");
-        if (suggestions.length === 0) {
-            suggestions.push({
+    if (suggestions.length === 0) {
+         suggestions.push({
                 type: 'default_ok',
                 text: '本次测评整体表现尚可，请参照具体板块和题目得分，继续学习和巩固。',
                 icon: 'bi-info-circle text-secondary',
@@ -1775,7 +1779,7 @@ function generateIndividualAnalysis(records) {
         
         // 1. 板块得分分布 (包含未得分)
         console.log("[generateIndividualAnalysis] Calculating individual section performance...");
-        const sectionPerformanceResult = calculateIndividualSectionPerformance(record);
+        const sectionPerformanceResult = calculateIndividualSectionPerformance(record); 
 
         // **** 清空旧的小饼图容器 ****
         const breakdownContainer = document.getElementById('individualSectionBreakdownCharts');
@@ -2663,3 +2667,226 @@ function renderSectionBreakdownChart(sectionName, achievedScore, maxScore, conta
     }
 }
 // **** 结束新增函数 ****
+
+// **** 新增：导出题库 ****
+function exportQuestionBank() {
+    try {
+        const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
+        if (questionBank.length === 0) {
+            alert("题库为空，无需导出。");
+            return;
+        }
+        const dataToExport = { questionBank: questionBank }; // Wrap in an object for consistency
+        const jsonData = JSON.stringify(dataToExport, null, 2);
+        downloadJsonFile(jsonData, 'question_bank');
+        alert('题库数据已成功导出！');
+    } catch (error) {
+        console.error('导出题库时出错:', error);
+        alert('导出题库失败，请查看控制台获取更多信息。');
+    }
+}
+
+// **** 新增：导出测评历史 (已完成) ****
+function exportCompletedHistory() {
+    try {
+        const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+        const completedHistory = history.filter(record => record.status === 'completed');
+        if (completedHistory.length === 0) {
+            alert("没有已完成的测评历史记录可导出。");
+            return;
+        }
+        const dataToExport = { assessmentHistory: completedHistory }; // Wrap in an object
+        const jsonData = JSON.stringify(dataToExport, null, 2);
+        downloadJsonFile(jsonData, 'assessment_history_completed');
+        alert('已完成的测评历史已成功导出！');
+    } catch (error) {
+        console.error('导出测评历史时出错:', error);
+        alert('导出测评历史失败，请查看控制台获取更多信息。');
+    }
+}
+
+// **** 新增：导出暂存记录 ****
+function exportPausedAssessments() {
+    try {
+        const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+        const pausedAssessments = history.filter(record => record.status === 'paused');
+        if (pausedAssessments.length === 0) {
+            alert("没有暂存的测评记录可导出。");
+            return;
+        }
+        const dataToExport = { assessmentHistory: pausedAssessments }; // Wrap in an object
+        const jsonData = JSON.stringify(dataToExport, null, 2);
+        downloadJsonFile(jsonData, 'assessment_paused');
+        alert('暂存的测评记录已成功导出！');
+    } catch (error) {
+        console.error('导出暂存记录时出错:', error);
+        alert('导出暂存记录失败，请查看控制台获取更多信息。');
+    }
+}
+
+// **** 新增：下载 JSON 文件的辅助函数 ****
+function downloadJsonFile(jsonData, baseFilename) {
+    const blob = new Blob([jsonData], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const timestamp = new Date().toISOString().replace(/[:.-]/g, '').slice(0, 14);
+    a.download = `${baseFilename}_${timestamp}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// **** 修改：处理文件导入并合并数据 ****
+function handleFileImport(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    if (file.type !== 'application/json') {
+        alert('请选择有效的 JSON 文件 (.json)');
+        event.target.value = null; 
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const importedData = JSON.parse(e.target.result);
+            
+            // **** 智能判断导入类型 ****
+            let dataType = 'unknown';
+            let dataArray = null;
+
+            if (importedData.questionBank && Array.isArray(importedData.questionBank)) {
+                dataType = 'questionBank';
+                dataArray = importedData.questionBank;
+                 console.log("Detected imported data type: Question Bank");
+            } else if (importedData.assessmentHistory && Array.isArray(importedData.assessmentHistory)) {
+                // 进一步判断是历史记录还是暂存记录 (或混合)
+                const firstRecord = importedData.assessmentHistory[0];
+                if (firstRecord && firstRecord.status === 'paused') {
+                    dataType = 'pausedAssessments';
+                    console.log("Detected imported data type: Paused Assessments");
+                } else if (firstRecord && firstRecord.status === 'completed'){
+                    dataType = 'completedHistory';
+                     console.log("Detected imported data type: Completed History");
+                } else {
+                     dataType = 'assessmentHistory'; // 可能是混合或旧格式
+                     console.log("Detected imported data type: Assessment History (mixed/unknown status)");
+                }
+                dataArray = importedData.assessmentHistory;
+            } else if (Array.isArray(importedData) && importedData.length > 0) {
+                // 尝试猜测根级别数组的类型
+                const firstItem = importedData[0];
+                if (firstItem.content && firstItem.standardAnswer) {
+                     dataType = 'questionBank_root'; // 根是题库数组
+                     dataArray = importedData;
+                     console.log("Detected imported data type: Question Bank (root array)");
+                } else if (firstItem.userInfo && firstItem.answers) {
+                     dataType = 'assessmentHistory_root'; // 根是历史数组
+                     dataArray = importedData;
+                     console.log("Detected imported data type: Assessment History (root array)");
+                } else {
+                     alert('无法识别导入文件中的数据结构。请确保文件是导出的题库或测评记录。');
+                     event.target.value = null;
+                     return;
+                }
+            } else {
+                alert('导入的文件似乎不是有效的测评数据备份或格式不正确。请检查文件内容。');
+                event.target.value = null;
+                return;
+            }
+
+            // 确认导入操作 (根据检测到的类型)
+            let confirmMessage = `检测到导入的数据类型为：${dataType}\n\n导入操作会将文件中的数据与现有数据合并。\n`;
+            if (dataType.includes('questionBank')) {
+                confirmMessage += "- 题库：将添加新题目，相同 ID 的题目将被覆盖。\n";
+            } 
+            if (dataType.includes('History') || dataType.includes('paused')) {
+                 confirmMessage += "- 记录：将添加新记录，相同 ID 的记录将被覆盖。\n";
+            }
+            confirmMessage += "\n确定要继续吗？";
+
+            if (!confirm(confirmMessage)) {
+                event.target.value = null;
+                return;
+            }
+
+            let newItemsAdded = 0;
+            let itemsUpdated = 0;
+            let targetStorageKey = '';
+
+            // **** 执行合并 ****
+            if (dataType.includes('questionBank')) {
+                targetStorageKey = 'questionBank';
+                const mergeResult = mergeDataById(targetStorageKey, dataArray);
+                newItemsAdded = mergeResult.added;
+                itemsUpdated = mergeResult.updated;
+            } else if (dataType.includes('History') || dataType.includes('paused')) {
+                targetStorageKey = 'assessmentHistory';
+                const mergeResult = mergeDataById(targetStorageKey, dataArray);
+                newItemsAdded = mergeResult.added;
+                itemsUpdated = mergeResult.updated;
+            } else {
+                 // 不应该到这里
+                 throw new Error("无法确定的数据类型，无法执行合并。");
+            }
+            
+             // 重新计算岗位映射
+             if (typeof updateAndSaveJobPositions === 'function') {
+                 updateAndSaveJobPositions();
+             } 
+
+            alert(`数据导入并合并完成！ (${dataType})\n- 新增记录/题目：${newItemsAdded}\n- 更新记录/题目：${itemsUpdated}\n\n建议刷新页面或重新加载分析数据以查看更改。`);
+
+            // 重新加载数据
+            loadPositionList(); 
+            loadEmployeeList();
+            clearAnalysisDisplay();
+
+        } catch (error) {
+            console.error('导入数据时出错:', error);
+            alert('导入数据失败，文件可能已损坏或格式不正确。请查看控制台获取更多信息。');
+        } finally {
+            event.target.value = null; // 清空文件选择
+        }
+    };
+    reader.onerror = function(error) { console.error('读取文件时出错:', error); alert('读取文件失败。'); event.target.value = null; };
+    reader.readAsText(file);
+}
+
+// **** 新增：通用的按 ID 合并数据的辅助函数 ****
+function mergeDataById(storageKey, newDataArray) {
+    let added = 0;
+    let updated = 0;
+    try {
+        const existingDataJson = localStorage.getItem(storageKey);
+        let existingData = existingDataJson ? JSON.parse(existingDataJson) : [];
+        if (!Array.isArray(existingData)) existingData = []; // 确保是数组
+
+        const existingDataMap = new Map(existingData.map(item => [item.id, item]));
+
+        newDataArray.forEach(newItem => {
+            if (newItem && newItem.id !== undefined) {
+                if (existingDataMap.has(newItem.id)) {
+                    // 更新
+                    const index = existingData.findIndex(item => item.id === newItem.id);
+                    if (index !== -1) {
+                        existingData[index] = newItem;
+                        updated++;
+                    }
+                } else {
+                    // 新增
+                    existingData.push(newItem);
+                    added++;
+                }
+            }
+        });
+        localStorage.setItem(storageKey, JSON.stringify(existingData));
+         console.log(`Merged data for key '${storageKey}'. Added: ${added}, Updated: ${updated}`);
+    } catch (error) {
+        console.error(`Error merging data for key ${storageKey}:`, error);
+        throw error; // Re-throw error to be caught by the caller
+    }
+    return { added, updated };
+}

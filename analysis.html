@@ -115,11 +115,23 @@
                  <h2 class="page-main-title"><i class="bi bi-bar-chart-line-fill me-2"></i>数据分析</h2>
                  <div class="purple-accent-line"></div>
              </div>
-             <!-- Data Import/Export Buttons Added Here -->
+             <!-- **** 修改：分类的导出/导入按钮 **** -->
              <div class="d-flex align-items-center">
-                <button id="exportDataBtn" class="btn btn-outline-secondary me-2"><i class="bi bi-download me-1"></i>导出数据</button>
+                <!-- 导出按钮组 -->
+                <div class="btn-group me-2" role="group" aria-label="Export options">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="bi bi-download me-1"></i>导出数据
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><button class="dropdown-item" id="exportQuestionBankBtn"><i class="bi bi-archive me-2"></i>导出题库</button></li>
+                        <li><button class="dropdown-item" id="exportHistoryBtn"><i class="bi bi-clock-history me-2"></i>导出测评历史</button></li>
+                        <li><button class="dropdown-item" id="exportPausedBtn"><i class="bi bi-pause-circle me-2"></i>导出暂存记录</button></li>
+                    </ul>
+                </div>
+                <!-- 导入按钮 -->
                 <button id="importDataBtn" class="btn btn-outline-secondary me-2"><i class="bi bi-upload me-1"></i>导入数据</button>
                 <input type="file" id="importFileInput" accept=".json" style="display: none;">
+                <!-- 返回首页按钮 -->
                 <button class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
                     <i class="bi bi-house-door me-1"></i>返回首页
                 </button>

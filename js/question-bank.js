@@ -9,6 +9,8 @@ let allPositions = [];
 document.addEventListener('DOMContentLoaded', function() {
     loadQuestions();
     initializeEventListeners();
+    setupDragAndDrop(); // **** 新增：初始化拖拽区域 ****
+    setupModalReset(); // **** 新增：初始化模态框重置 ****
 });
 
 // 初始化事件监听器 (添加空值检查)
@@ -808,4 +810,77 @@ function changePage(page) {
     
     // 可选：滚动到页面顶部
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+// **** 新增：初始化拖拽区域 ****
+function setupDragAndDrop() {
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('importFile');
+
+    if (!dropZone || !fileInput) {
+        console.warn("Drop zone or file input not found, drag & drop disabled.");
+        return;
+    }
+
+    dropZone.addEventListener('click', (e) => {
+        // 防止点击内部按钮时也触发文件选择
+        if (e.target.tagName !== 'BUTTON') { 
+             fileInput.click();
+        }
+    });
+
+    dropZone.addEventListener('dragover', (e) => {
+        e.preventDefault(); // 阻止默认行为 (打开文件)
+        dropZone.classList.add('border-primary'); // 添加高亮边框
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+        dropZone.classList.remove('border-primary'); // 移除高亮边框
+    });
+
+    dropZone.addEventListener('drop', (e) => {
+        e.preventDefault(); 
+        dropZone.classList.remove('border-primary');
+
+        if (e.dataTransfer.files.length) {
+            const file = e.dataTransfer.files[0];
+            // 验证文件类型
+            if (file.name.match(/\.(xlsx|xls|csv)$/i)) { 
+                fileInput.files = e.dataTransfer.files; // 将拖拽的文件赋值给隐藏的input
+                displaySelectedFileName(fileInput); // 更新显示并启用按钮
+            } else {
+                alert('请拖拽有效的 Excel 或 CSV 文件 (.xlsx, .xls, .csv)');
+            }
+        }
+    });
+}
+
+// **** 新增：显示选中的文件名并启用导入按钮 ****
+function displaySelectedFileName(inputElement) {
+    const selectedFileNameElement = document.getElementById('selectedFileName');
+    const importProcessBtn = document.getElementById('importProcessBtn');
+    if (inputElement.files.length > 0) {
+        selectedFileNameElement.textContent = `已选择: ${inputElement.files[0].name}`;
+        importProcessBtn.disabled = false; // 启用导入按钮
+    } else {
+        selectedFileNameElement.textContent = '';
+        importProcessBtn.disabled = true; // 禁用导入按钮
+    }
+}
+
+// **** 新增：重置导入模态框状态 ****
+function setupModalReset() {
+    const importModalElement = document.getElementById('importModal');
+    if (importModalElement) {
+        importModalElement.addEventListener('hidden.bs.modal', function () {
+            const fileInput = document.getElementById('importFile');
+            const selectedFileNameElement = document.getElementById('selectedFileName');
+            const importProcessBtn = document.getElementById('importProcessBtn');
+            
+            if(fileInput) fileInput.value = ''; // 清空文件选择
+            if(selectedFileNameElement) selectedFileNameElement.textContent = ''; // 清空显示的文件名
+            if(importProcessBtn) importProcessBtn.disabled = true; // 禁用导入按钮
+            console.log("Import modal closed, state reset.");
+        });
+    }
 } 

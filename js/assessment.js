@@ -5,6 +5,7 @@ let currentQuestionIndex = 0;
 let userAnswers = {};
 let currentAssessmentData = null; // 存储当前测评的完整数据
 let timerInterval = null; // 存储计时器
+let currentSessionStartTime = null; // **** 新增：记录当前活动会话开始时间 ****
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -13,7 +14,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const submitBtn = document.getElementById('submitBtn');
-    const terminateBtn = document.getElementById('terminateBtn'); // Get terminate button
+    const pauseBtn = document.getElementById('pauseBtn'); // <-- Changed ID from terminateBtn
 
     if (submitBtn) {
         submitBtn.addEventListener('click', submitAssessment);
@@ -25,8 +26,8 @@ document.addEventListener('DOMContentLoaded', function() {
     if (nextBtn) {
          nextBtn.addEventListener('click', showNextQuestion);
     }
-    if (terminateBtn) { // Add listener for terminate button
-         terminateBtn.addEventListener('click', terminateAssessment);
+    if (pauseBtn) { // <-- Changed variable name
+         pauseBtn.addEventListener('click', pauseAssessment); // <-- Changed function name
     }
 
     // **** 新增：键盘事件监听 ****
@@ -39,6 +40,9 @@ document.addEventListener('DOMContentLoaded', function() {
         currentQuestions = currentAssessmentData.questions;
         currentQuestionIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
         userAnswers = currentAssessmentData.answers;
+        // **** 确保加载累计的活动时间 ****
+        currentAssessmentData.totalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0; // 确保该字段存在并初始化
+        console.log(`[Resume Debug] Loaded totalActiveSeconds from currentAssessment: ${currentAssessmentData.totalActiveSeconds}`); // 添加日志
         
         // **** 调用 displayUserInfo 显示信息 ****
         displayUserInfo(currentAssessmentData.userInfo);
@@ -47,9 +51,12 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('userInfoForm').classList.add('d-none');
         document.getElementById('assessmentArea').classList.remove('d-none');
 
-        // 恢复计时器状态
-        const assessmentStartTime = new Date(currentAssessmentData.startTime);
-        startTimer(assessmentStartTime);
+        // 恢复计时器状态 (显示总流逝时间)
+        const assessmentStartTime = new Date(currentAssessmentData.startTime); 
+        console.log(`[Resume Debug] Loaded startTime: ${currentAssessmentData.startTime}, Parsed as: ${assessmentStartTime}`); // 添加日志
+        const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0; // 这是总流逝时间
+        console.log(`[Resume Debug] Loaded elapsedSeconds: ${elapsedSeconds}`); // 添加日志
+        startTimer(assessmentStartTime, elapsedSeconds); 
 
         // 生成导航并显示当前题目
         generateQuestionNavigation(); // Generate buttons first
@@ -429,7 +436,8 @@ function startAssessment() {
         })),
         answers: {}, // 初始化为空对象
         startTime: assessmentStartTime.toISOString(), // 总开始时间
-        status: 'in_progress'
+        status: 'in_progress',
+        totalActiveSeconds: 0 // **** 初始化活动时间 ****
     };
 
     // 初始化答案对象，并设置第一题的开始时间
@@ -459,8 +467,8 @@ function startAssessment() {
     document.getElementById('totalQuestions').textContent = currentQuestions.length;
     generateQuestionNavigation(); 
 
-    // 开始计时器 (如果需要显示总时长)
-    startTimer(assessmentStartTime);
+    // 开始计时器
+    startTimer(assessmentStartTime); // 首次开始，从0开始计时
 
     // **** 调用 displayUserInfo 显示信息 ****
     displayUserInfo(currentAssessmentData.userInfo);
@@ -760,7 +768,7 @@ function updateSubmitButton() {
     }
 }
 
-// 提交测评
+// **** 修改：提交测评 ****
 function submitAssessment() {
     // **** 新增：在提交前获取测评人姓名 ****
     const assessorName = prompt("请输入测评人姓名：");
@@ -772,10 +780,9 @@ function submitAssessment() {
     currentAssessmentData.assessor = assessorName.trim();
 
     // **先保存最后一题的答案**
-    saveCurrentAnswer(false); // Save final answer, validate score strictly here if needed
-    // **再记录最后一题的用时**
+    saveCurrentAnswer(false); 
     recordPreviousQuestionTime(); 
-    stopTimer();
+    // **** stopTimer() 先不调用 ****
 
     // **检查所有题目是否都已评分**
     if (!checkAllAnswered()) {
@@ -804,80 +811,202 @@ function submitAssessment() {
         }
     });
 
+    // **** 添加日志：检查恢复后的初始活动时间 ****
+    const initialTotalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0;
+    console.log(`[Submit Debug] Initial totalActiveSeconds from currentAssessmentData: ${initialTotalActiveSeconds}`);
+
+    // **** 计算最后活动会话时长 ****
+    let finalSessionDurationSeconds = 0;
+    const sessionStartTime = currentSessionStartTime; 
+    if (sessionStartTime) {
+        finalSessionDurationSeconds = Math.floor((assessmentEndTime - sessionStartTime) / 1000);
+    } else {
+        console.warn("提交时 currentSessionStartTime 为空，最后会话时长计为0。");
+    }
+
+    // **** 在计算完会话时长后，再停止计时器 ****
+    stopTimer(); 
+
+    // **** 添加日志：检查本次会话计算 ****
+    console.log(`[Submit Debug] currentSessionStartTime: ${sessionStartTime ? sessionStartTime.toISOString() : 'null'}, assessmentEndTime: ${assessmentEndTime.toISOString()}, calculated finalSessionDurationSeconds: ${finalSessionDurationSeconds}`);
+
+    // **** 计算总活动时长 ****
+    let totalActiveSeconds = initialTotalActiveSeconds + finalSessionDurationSeconds;
+
+     // **** 添加日志：检查最终总时间 ****
+     console.log(`[Submit Debug] Final calculated totalActiveSeconds: ${totalActiveSeconds} (initial: ${initialTotalActiveSeconds} + final session: ${finalSessionDurationSeconds})`);
+
+    // 更新 currentAssessmentData
     currentAssessmentData.answers = userAnswers;
     currentAssessmentData.score = totalScore;
     currentAssessmentData.maxScore = maxPossibleScore;
-    currentAssessmentData.duration = Math.round((assessmentEndTime - new Date(currentAssessmentData.startTime)) / (1000 * 60)); // Recalculate total duration
+    // **** 使用总活动时间计算最终时长 ****
+    currentAssessmentData.duration = Math.round(totalActiveSeconds / 60); 
     currentAssessmentData.status = 'completed';
     currentAssessmentData.timestamp = assessmentEndTime.toISOString();
+    currentAssessmentData.totalActiveSeconds = totalActiveSeconds; // 保存最终的总活动秒数
+
+    // **** 添加日志：检查要保存的分钟数 ****
+    console.log(`[Submit Debug] Duration to be saved (rounded minutes): ${currentAssessmentData.duration}`);
 
     // **** 新增：计算得分率 ****
     const scoreRate = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
 
     // Save to history
     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    // **** 修改：使用统一的嵌套 score 对象结构 ****
     const historyRecord = {
         id: currentAssessmentData.id,
-        userInfo: currentAssessmentData.userInfo, // Ensure this is correctly populated
+        userInfo: currentAssessmentData.userInfo,
         position: currentAssessmentData.position,
-        assessor: currentAssessmentData.assessor, // 将保存测评人姓名
+        assessor: currentAssessmentData.assessor,
         timestamp: currentAssessmentData.timestamp,
-        duration: currentAssessmentData.duration,
-        score: { // **** 嵌套的 score 对象 ****
+        startTime: currentAssessmentData.startTime, // **** 添加原始 startTime ****
+        duration: currentAssessmentData.duration, // 使用计算好的活动分钟数
+        score: { 
             totalScore: totalScore,
             maxScore: maxPossibleScore,
             scoreRate: scoreRate
         },
-        questions: currentAssessmentData.questions.map(q => ({ // Map to store only needed info
+        questions: currentAssessmentData.questions.map(q => ({
              id: q.id,
              content: q.content,
              standardScore: q.standardScore,
              standardAnswer: q.standardAnswer,
              section: q.section,
              type: q.type,
-             knowledgeSource: q.knowledgeSource // <-- 添加这一行
+             knowledgeSource: q.knowledgeSource
          })),
-        answers: currentAssessmentData.answers
+        answers: currentAssessmentData.answers,
+        status: 'completed', // 标记为完成
+        totalActiveSeconds: currentAssessmentData.totalActiveSeconds // 保存活动秒数供参考
     };
+    
+    // **** 添加日志：检查要保存的记录 ****
+    console.log("[Submit Debug] Final historyRecord to be saved:", JSON.parse(JSON.stringify(historyRecord)));
 
-    history.push(historyRecord);
-    localStorage.setItem('assessmentHistory', JSON.stringify(history));
+    // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
+    const historyWithoutPaused = history.filter(item => !(item.id === historyRecord.id && item.status === 'paused'));
+    historyWithoutPaused.push(historyRecord);
+    localStorage.setItem('assessmentHistory', JSON.stringify(historyWithoutPaused));
+
     localStorage.removeItem('currentAssessment');
+    console.log("Assessment submitted and saved to history. Redirecting...");
+
+    // **** 在跳转前暂停执行以查看日志 ****
+    debugger; 
 
     window.location.href = `result.html?assessmentId=${currentAssessmentData.id}`;
 }
 
-// **** 新增：终止测评 ****
-function terminateAssessment() {
-    if (confirm("确定要终止本次测评吗？所有进度将丢失。")) {
-        stopTimer(); // Stop the timer
-        localStorage.removeItem('currentAssessment'); // Remove in-progress assessment
-        window.location.href = 'index.html'; // Redirect to homepage
+// **** 修改：暂存测评 ****
+function pauseAssessment() {
+    // 1. 记录当前状态
+    if (!currentAssessmentData) {
+        console.error("无法暂存：没有当前的测评数据。");
+        alert("没有正在进行的测评可以暂存。");
+        return;
     }
+    
+    // **** 保存最后一次答案和时间 ****
+    saveCurrentAnswer(true); // Save current state before pausing (isNavigating=true to skip validation if needed)
+    recordPreviousQuestionTime(); // Record time for the question before the current one
+
+    // **** 计算当前活动会话时长 ****
+    let currentSessionDurationSeconds = 0;
+    if (currentSessionStartTime) {
+        currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
+    } else {
+        console.warn("暂存时 currentSessionStartTime 为空，本次会话时长计为0。");
+    }
+    stopTimer(); // 停止计时器，清空 currentSessionStartTime
+
+    // **** 累加总活动时长 ****
+    currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
+
+    // **** 计算总流逝时间 (用于记录暂停点) ****
+    let elapsedSeconds = 0;
+    if (currentAssessmentData.startTime) {
+        const startTime = new Date(currentAssessmentData.startTime);
+        const now = new Date();
+        elapsedSeconds = Math.floor((now - startTime) / 1000);
+    } 
+
+    // 3. 更新测评数据状态
+    currentAssessmentData.status = 'paused';
+    currentAssessmentData.elapsedSeconds = elapsedSeconds; // 保存总流逝时间
+    currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
+    currentAssessmentData.timestamp = new Date().toISOString(); // 更新时间戳为暂存时间
+    // totalActiveSeconds 已经在上面更新过了
+
+    // 4. 保存到历史记录 
+    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+     const historyRecord = {
+        id: currentAssessmentData.id,
+        userInfo: currentAssessmentData.userInfo, 
+        position: currentAssessmentData.position,
+        assessor: currentAssessmentData.assessor || null, // 可能还没有测评人
+        timestamp: currentAssessmentData.timestamp, // Use pause time
+        startTime: currentAssessmentData.startTime, // **** 添加原始 startTime ****
+        duration: Math.round((currentAssessmentData.totalActiveSeconds || 0) / 60),
+        score: { totalScore: null, maxScore: currentAssessmentData.maxScore || null, scoreRate: null },
+        questions: currentAssessmentData.questions,
+        answers: currentAssessmentData.answers,
+        status: 'paused',
+        elapsedSeconds: currentAssessmentData.elapsedSeconds, // 保存总流逝秒数
+        currentQuestionIndex: currentAssessmentData.currentQuestionIndex,
+        totalActiveSeconds: currentAssessmentData.totalActiveSeconds // **** 保存活动总秒数 ****
+    };
+
+    // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
+    const existingIndex = history.findIndex(item => item.id === historyRecord.id);
+    if (existingIndex > -1) {
+        history[existingIndex] = historyRecord; // Update existing paused record
+        console.log(`Updated paused assessment with ID: ${historyRecord.id} in history.`);
+    } else {
+        history.push(historyRecord); // Add as new paused record
+        console.log(`Saved new paused assessment with ID: ${historyRecord.id} to history.`);
+    }
+    localStorage.setItem('assessmentHistory', JSON.stringify(history));
+
+    // 5. 清除当前测评状态并重定向
+    localStorage.removeItem('currentAssessment');
+    console.log("Assessment paused and saved to history. Redirecting...");
+    alert("测评已暂存！"); // Inform user
+    window.location.href = 'history.html'; // Redirect to history page
 }
 
-// 启动计时器 (显示总时长)
-function startTimer(startTime) {
+// 启动计时器 (修改：记录会话开始时间)
+function startTimer(startTime, initialElapsedSeconds = 0) {
     if (timerInterval) {
         clearInterval(timerInterval);
     }
     const timerElement = document.getElementById('timer');
+    let elapsedSeconds = initialElapsedSeconds; 
+
+    // Immediately update timer display with initial time
+    const initialMinutes = Math.floor(elapsedSeconds / 60);
+    const initialSeconds = elapsedSeconds % 60;
+    timerElement.textContent = `${String(initialMinutes).padStart(2, '0')}:${String(initialSeconds).padStart(2, '0')}`;
+
+    // **** 记录当前会话开始时间 ****
+    currentSessionStartTime = new Date(); 
+
     timerInterval = setInterval(() => {
-        const now = new Date();
-        const elapsedSeconds = Math.floor((now - startTime) / 1000);
+        elapsedSeconds++; 
         const minutes = Math.floor(elapsedSeconds / 60);
         const seconds = elapsedSeconds % 60;
         timerElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
     }, 1000);
 }
 
-// 停止计时器
+// 停止计时器 (修改：清空会话开始时间)
 function stopTimer() {
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
     }
+    // **** 清空会话开始时间 ****
+    currentSessionStartTime = null; 
 }
 
 // **** 添加 formatAnswerContent 函数（如果 assessment.js 中没有） ****
