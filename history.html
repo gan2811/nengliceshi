@@ -34,6 +34,29 @@
         .filter-section .input-group .btn {
             height: calc(1.5em + 0.75rem + 2px); /* Match default BS form control height */
         }
+        /* Style for table action buttons */
+        .history-action-btn {
+            padding: 0.35rem 0.85rem; /* Adjust padding for better touch */
+            border-radius: 100px; 
+            margin-left: 5px; 
+        }
+
+        /* Responsive styles for the actions column in the history table */
+        @media (max-width: 767.98px) { /* Target screens smaller than md breakpoint */
+            #historyTableBody td:last-child { /* Target the last cell (actions) in the body */
+                min-width: 90px;        /* Give the actions column a bit more minimum space */
+                display: flex;          /* Use flexbox for layout inside the cell */
+                flex-direction: column; /* Stack buttons vertically */
+                align-items: stretch;   /* Make buttons stretch to fill cell width */
+                gap: 0.3rem;            /* Add a small gap between stacked buttons */
+            }
+            /* Ensure buttons take full width and center text */
+            #historyTableBody td:last-child .history-action-btn {
+                 width: 100%; 
+                 text-align: center; 
+                 margin-left: 0; /* Remove left margin when stacked */
+            } 
+        }
     </style>
 </head>
 <body>
@@ -78,9 +101,9 @@
                 <div class="purple-accent-line"></div>
             </div>
             <!-- **** Move Export button here, before Home button **** -->
-            <div> 
-                 <button type="button" class="btn btn-outline-success me-2" id="exportListBtn" onclick="exportHistoryList()">
-                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表 
+            <div class="d-flex flex-wrap gap-2">
+                 <button type="button" class="btn btn-outline-success" id="exportListBtn" onclick="exportHistoryList()">
+                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
                  </button>
                 <button id="backToIndexBtn" class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
                     <i class="bi bi-house-door me-1"></i>返回首页
@@ -92,15 +115,15 @@
         <div class="filter-section mb-4 p-3 rounded shadow-sm">
             <!-- 筛选条件 -->
             <div class="row mb-4 g-3">
-                <div class="col-md-3">
+                <div class="col-md-3 mb-3 mb-md-0">
                     <label class="form-label"><i class="bi bi-calendar me-1"></i>开始日期</label>
                     <input type="date" class="form-control" id="startDate">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3 mb-3 mb-md-0">
                     <label class="form-label"><i class="bi bi-calendar me-1"></i>结束日期</label>
                     <input type="date" class="form-control" id="endDate">
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-3 mb-3 mb-md-0">
                     <label class="form-label"><i class="bi bi-person-badge me-1"></i>岗位</label>
                     <select class="form-select" id="positionFilter">
                         <option value="">全部岗位</option>

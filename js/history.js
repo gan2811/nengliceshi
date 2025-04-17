@@ -17,7 +17,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     if (detailModalElement && backToIndexBtn) {
         detailModalElement.addEventListener('hidden.bs.modal', function () {
-            console.log("Detail modal hidden, setting focus to back button.");
+            // console.log("Detail modal hidden, setting focus to back button."); // 注释掉调试日志
             backToIndexBtn.focus(); // 将焦点设置到返回按钮
         });
     } else {

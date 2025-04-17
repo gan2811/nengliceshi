@@ -91,7 +91,8 @@
         }
         .btn-action {
             border-radius: 100px;
-            padding: 4px 14px;
+            /* Adjust padding for a slightly smaller touch target */
+            padding: 0.35rem 0.85rem; 
             margin-left: 5px;
         }
         .section-title {
@@ -181,7 +182,8 @@
                          </button>
                     </div>
                     <!-- 右侧搜索框 -->
-                    <div style="min-width: 250px;"> <!-- Ensure search doesn't get too small -->
+                    <!-- Remove w-100 to allow merging on small screens -->
+                    <div class="w-md-auto"> 
                         <div class="input-group">
                             <input type="text" class="form-control" id="searchInput" placeholder="搜索题目...">
                             <button class="btn btn-outline-secondary" type="button" onclick="searchQuestions()">

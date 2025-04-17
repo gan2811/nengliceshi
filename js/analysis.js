@@ -57,7 +57,7 @@ function clearAnalysisDisplay() {
 
 // **** 新增：加载岗位列表到下拉框 ****
 function loadPositionList() {
-    console.log("[loadPositionList] 开始加载岗位下拉列表...");
+    // // console.log("[loadPositionList] 开始加载岗位下拉列表...");
     const positionSelect = document.getElementById('positionSelect'); // 岗位分析用
     const employeePositionSelect = document.getElementById('employeePosition'); // 个人分析用
 
@@ -78,7 +78,7 @@ function loadPositionList() {
             return;
         }
         const positions = JSON.parse(positionsData);
-        console.log("[loadPositionList] 从 localStorage 加载岗位数据:", positions);
+        // // console.log("[loadPositionList] 从 localStorage 加载岗位数据:", positions);
 
         let positionCount = 0;
         for (const code in positions) {
@@ -92,7 +92,7 @@ function loadPositionList() {
                 positionCount++;
             }
         }
-        console.log(`[loadPositionList] 成功添加了 ${positionCount} 个岗位选项。`);
+        // // console.log(`[loadPositionList] 成功添加了 ${positionCount} 个岗位选项。`);
 
         if (positionCount === 0) {
             console.warn("[loadPositionList] 'jobPositions' 数据为空，下拉框内容为空。");
@@ -101,7 +101,7 @@ function loadPositionList() {
         console.error("[loadPositionList] 加载或解析 'jobPositions' 出错:", error);
         // 可以选择性地禁用下拉框或显示错误消息
     }
-    console.log("[loadPositionList] 岗位下拉列表加载完成。");
+    // // console.log("[loadPositionList] 岗位下拉列表加载完成。");
 }
 // **** 结束新增函数 ****
 
@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', function() {
     const tabParam = urlParams.get('tab');
 
     if (tabParam === 'individual' && employeeIdParam && assessmentIdParam) {
-        console.log("URL params detected, loading individual analysis...");
+        // // console.log("URL params detected, loading individual analysis...");
         // 切换到个人分析标签页
         const individualTab = document.getElementById('individual-tab');
         const positionTab = document.getElementById('position-tab');
@@ -206,8 +206,8 @@ function clearPositionAnalysis() {
 }
 
 function loadPositionAnalysis() {
-    console.log("####### EXECUTING CORRECT loadPositionAnalysis (near line 102) #######");
-    console.log("[loadPositionAnalysis] 开始加载岗位分析数据...");
+    // // console.log("####### EXECUTING CORRECT loadPositionAnalysis (near line 102) #######");
+    // // console.log("[loadPositionAnalysis] 开始加载岗位分析数据...");
     const positionSelect = document.getElementById('positionSelect');
     // **** Get Start and End Date Inputs ****
     const startDateInput = document.getElementById('positionStartDate');
@@ -220,11 +220,11 @@ function loadPositionAnalysis() {
     const startDateValue = startDateInput.value;
     const endDateValue = endDateInput.value;
 
-    console.log(`[loadPositionAnalysis] 筛选条件: 岗位='${selectedPosition}', 开始日期='${startDateValue}', 结束日期='${endDateValue}'`);
+    // // console.log(`[loadPositionAnalysis] 筛选条件: 岗位='${selectedPosition}', 开始日期='${startDateValue}', 结束日期='${endDateValue}'`);
 
     // **** 新增：加载并筛选记录 ****
     const allHistory = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    console.log(`[loadPositionAnalysis] 从 localStorage 加载了 ${allHistory.length} 条总记录.`);
+    // // console.log(`[loadPositionAnalysis] 从 localStorage 加载了 ${allHistory.length} 条总记录.`);
 
     const filteredRecords = allHistory.filter(record => {
         // 1. Check position
@@ -263,7 +263,7 @@ function loadPositionAnalysis() {
     });
     // **** 筛选逻辑结束 ****
 
-    console.log(`[loadPositionAnalysis] 筛选后得到 ${filteredRecords.length} 条记录.`);
+    // // console.log(`[loadPositionAnalysis] 筛选后得到 ${filteredRecords.length} 条记录.`);
 
     // 清除旧图表和列表
     clearChart('sectionMasteryChart');
@@ -280,7 +280,7 @@ function loadPositionAnalysis() {
         return;
     }
 
-    console.log("[loadPositionAnalysis] Analyzing records for position analysis:", filteredRecords);
+    // // console.log("[loadPositionAnalysis] Analyzing records for position analysis:", filteredRecords);
 
     const avgSectionRates = calculatePositionSectionMastery(filteredRecords);
     renderPositionSectionMasteryChart(avgSectionRates); 
@@ -297,12 +297,12 @@ function loadPositionAnalysis() {
     
     placeholderDiv.style.display = 'none';
     contentDiv.style.display = 'block';
-    console.log("[loadPositionAnalysis] 分析完成，显示结果。");
+    // // console.log("[loadPositionAnalysis] 分析完成，显示结果。");
 }
 
 // **** Define calculatePositionSectionMastery ****
 function calculatePositionSectionMastery(records) {
-    console.log(`[calculatePositionSectionMastery] Calculating for ${records.length} records.`);
+    // // console.log(`[calculatePositionSectionMastery] Calculating for ${records.length} records.`);
     // This function directly uses the logic for calculating average section scores based on actual questions in each record.
     return calculateAverageSectionScores(records);
 }
@@ -799,7 +799,7 @@ function renderIndividualSectionChart(performanceData, chartTitle = '板块得�
     });
 
     if (individualSectionChartInstance) {
-        // console.log('[renderIndividualSectionChart] Destroying previous chart instance.'); // Simplified log
+        // // console.log('[renderIndividualSectionChart] Destroying previous chart instance.'); // Simplified log
         individualSectionChartInstance.destroy();
     }
 
@@ -837,11 +837,11 @@ function renderIndividualSectionChart(performanceData, chartTitle = '板块得�
                 }
             }
         });
-        // console.log('[renderIndividualSectionChart] New chart instance created.'); // Simplified log
+        // // console.log('[renderIndividualSectionChart] New chart instance created.'); // Simplified log
     } catch (error) {
         console.error('[renderIndividualSectionChart] ERROR creating chart:', error);
     }
-    // console.log('[renderIndividualSectionChart] END.'); // Simplified log
+    // // console.log('[renderIndividualSectionChart] END.'); // Simplified log
 }
 
 
@@ -855,39 +855,48 @@ function calculateIndividualQuestionPerformance(record) {
          const standardScore = q.standardScore || 0; // 需要 standardScore
          const knowledgeSource = q.knowledgeSource || null; // 获取知识点来源
 
-         // **** 修改：包含 id 和 knowledgeSource ****
-             const questionInfo = {
-             id: q.id, // 添加 ID
-                 content: q.content || '无内容',
-             score: '未作答', // 默认未作答
-                 standardScore: standardScore,
-             comment: '', // 默认空备注
-             knowledgeSource: knowledgeSource // 添加来源
-         };
+         // **** 修改：包含 id 和 knowledgeSource, 初始化 score 为 null ****
+              const questionInfo = {
+              id: q.id, // 添加 ID
+                  content: q.content || '无内容',
+              score: null, // 初始化为 null, 表示未作答或无效
+                  standardScore: standardScore,
+              comment: '', // 默认空备注
+              knowledgeSource: knowledgeSource // 添加来源
+          };
 
          if (answer) { // 如果有答案记录
-             questionInfo.score = (answer.score !== null && !isNaN(answer.score)) ? answer.score : 0;
+             // 确保 answer.score 是有效数字才赋值，否则保持 null
+             if (answer.score !== null && !isNaN(answer.score)) {
+                 questionInfo.score = Number(answer.score);
+             }
              questionInfo.comment = answer.comment || '';
 
+             // **** 新的判断逻辑 ****
              if (standardScore > 0) {
-                 if (questionInfo.score >= standardScore) { 
-                 performance.best.push(questionInfo);
-             } else {
+                 if (questionInfo.score !== null) { // 必须有有效得分才能计算比率
+                     const scoreRate = (questionInfo.score / standardScore) * 100;
+                     if (scoreRate < 60) { // 低于 60% 的放入待提高
+                         performance.worst.push(questionInfo);
+                     } else { // 大于等于 60% 的放入掌握较好
+                         performance.best.push(questionInfo);
+                     }
+                 } else { // 分数无效或为 null (可能发生在导入或旧数据)，归为待提高
+                     performance.worst.push(questionInfo);
+                 }
+             } else { // 标准分为0或无效，归为待提高
                  performance.worst.push(questionInfo);
              }
          } else {
-                  // 标准分为0或无效，也归为待提高？
-                  performance.worst.push(questionInfo); 
-             }
-         } else {
-             // 没有答案记录的题目，归为待提高
+             // 没有答案记录 (answer 不存在), 归为待提高
+             questionInfo.score = '未作答'; // 明确标记状态
              performance.worst.push(questionInfo);
          }
      });
 
      // 按得分率排序（将'未作答'视为最低分）
      const calculateRate = (q) => {
-         if (q.score === '未作答') return -1; // 未作答得分率最低
+         if (q.score === '未作答' || q.score === null) return -1; // 未作答或无效分数视为最低
          return q.standardScore > 0 ? (q.score / q.standardScore * 100) : 0;
      };
       performance.best.sort((a, b) => calculateRate(b) - calculateRate(a)); // 高分在前
@@ -927,19 +936,19 @@ function displayIndividualQuestionPerformance(performanceData) {
 
 
 function renderHistoricalScoresChart(historyData) {
-    console.log('[renderHistoricalScoresChart] START. Data:', historyData);
+    // // console.log('[renderHistoricalScoresChart] START. Data:', historyData);
     const ctx = document.getElementById('historicalScoresChart')?.getContext('2d');
      if (!ctx) {
         console.error('[renderHistoricalScoresChart] ERROR: Cannot get context for historicalScoresChart');
         return;
     }
-    console.log('[renderHistoricalScoresChart] Got canvas context.');
+    // // console.log('[renderHistoricalScoresChart] Got canvas context.');
 
     if (!historyData || historyData.length === 0) {
-        console.warn('[renderHistoricalScoresChart] No history data to render.');
+        // // console.warn('[renderHistoricalScoresChart] No history data to render.');
          if (historicalScoresChartInstance) historicalScoresChartInstance.destroy();
          // Optionally display a message on the canvas or in the card
-        console.log('[renderHistoricalScoresChart] END (no data).');
+        // // console.log('[renderHistoricalScoresChart] END (no data).');
         return;
     }
 
@@ -947,7 +956,7 @@ function renderHistoricalScoresChart(historyData) {
     const data = historyData.map(record => record.scoreRate || 0);
 
      if (historicalScoresChartInstance) {
-        console.log('[renderHistoricalScoresChart] Destroying previous chart instance.');
+        // // console.log('[renderHistoricalScoresChart] Destroying previous chart instance.');
         historicalScoresChartInstance.destroy();
     }
 
@@ -984,19 +993,19 @@ function renderHistoricalScoresChart(historyData) {
                 }
             }
         });
-        console.log('[renderHistoricalScoresChart] New chart instance created.');
+        // // console.log('[renderHistoricalScoresChart] New chart instance created.');
     } catch(error) {
          console.error('[renderHistoricalScoresChart] ERROR creating chart:', error);
     }
-    console.log('[renderHistoricalScoresChart] END.');
+    // // console.log('[renderHistoricalScoresChart] END.');
 }
 
 // **** 重构：生成个人培训建议 (V2) ****
 function generateIndividualTrainingSuggestions(record, relevantHistory = []) { 
-    console.log(`[generateIndividualTrainingSuggestions] START. Received record ID: ${record ? record.id : 'N/A'}, relevantHistory count: ${relevantHistory.length}`);
+    // // console.log(`[generateIndividualTrainingSuggestions] START. Received record ID: ${record ? record.id : 'N/A'}, relevantHistory count: ${relevantHistory.length}`);
     
     // **** 在函数开头添加日志 ****
-    console.log("--- generateIndividualTrainingSuggestions ---");
+    // // console.log("--- generateIndividualTrainingSuggestions ---");
     const weakQuestions = record.questions ? JSON.parse(JSON.stringify(record.questions.filter(q => {
         const answer = record.answers[q.id];
         return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 < 70;
@@ -1005,8 +1014,8 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
         const answer = record.answers[q.id];
         return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 >= 70 && (answer.score / q.standardScore) * 100 < 85;
     }))) : [];
-    console.log("Calculated weakQuestions:", weakQuestions); 
-    console.log("Calculated improvableQuestions:", improvableQuestions);
+    // // console.log("Calculated weakQuestions:", weakQuestions); 
+    // // console.log("Calculated improvableQuestions:", improvableQuestions);
     // **** 日志结束 ****
 
     const suggestions = [];
@@ -1014,7 +1023,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
     try {
         // 定义得分率阈值
         const criticalThreshold = 60; // 非常薄弱，需重点关注
-        const weakThreshold = 75;     // 有待提高
+        const weakThreshold = 70;     // 有待提高 (从 75 修改为 70)
         const goodThreshold = 90;      // 良好
 
         // --- 0. 数据有效性检查 ---
@@ -1023,10 +1032,10 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
             // Return error suggestion array
             return [{ type: 'error', text: '无法生成培训建议：测评记录数据不完整或格式错误。', icon: 'bi-x-octagon-fill text-danger', priority: -1 }];
         }
-        console.log("[generateIndividualTrainingSuggestions V2] Data validation passed.");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Data validation passed.");
 
         // --- 1. 计算核心指标 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 1: Calculating core metrics...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 1: Calculating core metrics...");
         const sectionPerformance = calculateIndividualSectionPerformance(record);
         const sectionScoreRates = {}; // { sectionName: scoreRate }
         if (sectionPerformance.performance) {
@@ -1038,10 +1047,10 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
             ? Math.round((sectionPerformance.totalAchieved / sectionPerformance.totalStandard) * 100)
             : 0;
         const questionPerformance = calculateIndividualQuestionPerformance(record); // { best: [], worst: [] }
-        console.log("[generateIndividualTrainingSuggestions V2] Step 1 DONE. Overall Rate:", overallScoreRate, "Section Rates:", sectionScoreRates);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 1 DONE. Overall Rate:", overallScoreRate, "Section Rates:", sectionScoreRates);
 
         // --- 2. 分析历史趋势 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 2: Analyzing trend...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 2: Analyzing trend...");
         let trendSuggestion = null;
         const currentRecordIndex = relevantHistory.findIndex(r => r.id === record.id);
         if (currentRecordIndex > 0) {
@@ -1083,18 +1092,18 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                 }
                 if (trendSuggestion) {
                     suggestions.push(trendSuggestion);
-                    console.log("[generateIndividualTrainingSuggestions V2]   -> Trend suggestion added:", trendSuggestion.type);
+                    // // console.log("[generateIndividualTrainingSuggestions V2]   -> Trend suggestion added:", trendSuggestion.type);
                 } else {
-                    console.log("[generateIndividualTrainingSuggestions V2]   -> No specific trend detected.");
+                    // // console.log("[generateIndividualTrainingSuggestions V2]   -> No specific trend detected.");
                 }
             }
         } else {
-             console.log("[generateIndividualTrainingSuggestions V2]   -> Not enough history for trend analysis (current index <= 0).");
+             // // console.log("[generateIndividualTrainingSuggestions V2]   -> Not enough history for trend analysis (current index <= 0).");
         }
-        console.log("[generateIndividualTrainingSuggestions V2] Step 2 DONE. Current suggestions count:", suggestions.length);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 2 DONE. Current suggestions count:", suggestions.length);
 
         // --- 3. 分析板块表现 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 3: Analyzing section performance...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 3: Analyzing section performance...");
         let hasCriticalSection = false;
         let hasWeakSection = false;
         Object.entries(sectionScoreRates).sort(([, rateA], [, rateB]) => rateA - rateB).forEach(([section, scoreRate]) => {
@@ -1105,7 +1114,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                     text: `<strong>重点关注板块：</strong> <strong class="text-danger">${section}</strong> (${scoreRate}%)，掌握程度严重不足，建议安排<strong class="text-danger">系统性培训和专项辅导</strong>。`,
                     icon: 'bi-exclamation-triangle-fill text-danger', priority: 1
                 });
-                 console.log(`[generateIndividualTrainingSuggestions V2]   -> Critical section suggestion added for: ${section}`);
+                 // // console.log(`[generateIndividualTrainingSuggestions V2]   -> Critical section suggestion added for: ${section}`);
             } else if (scoreRate < weakThreshold) {
                 hasWeakSection = true;
                 suggestions.push({
@@ -1113,13 +1122,13 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                     text: `<strong>待加强板块：</strong> <strong class="text-warning">${section}</strong> (${scoreRate}%)，掌握尚有不足，建议<strong class="text-warning">加强复习和针对性练习</strong>。`,
                     icon: 'bi-exclamation-circle-fill text-warning', priority: 2
                 });
-                 console.log(`[generateIndividualTrainingSuggestions V2]   -> Weak section suggestion added for: ${section}`);
+                 // // console.log(`[generateIndividualTrainingSuggestions V2]   -> Weak section suggestion added for: ${section}`);
             }
         });
-        console.log("[generateIndividualTrainingSuggestions V2] Step 3 DONE. Current suggestions count:", suggestions.length);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 3 DONE. Current suggestions count:", suggestions.length);
 
         // --- 4. 分析具体题目表现 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 4: Analyzing question performance...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 4: Analyzing question performance...");
         const criticalQuestions = questionPerformance.worst.filter(q => q.score === '未作答' || (q.standardScore > 0 && (q.score / q.standardScore * 100) < criticalThreshold));
         const weakQuestions = questionPerformance.worst.filter(q => !criticalQuestions.includes(q) && q.score !== '未作答' && q.standardScore > 0 && (q.score / q.standardScore * 100) < weakThreshold);
 
@@ -1139,7 +1148,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                 text: `<strong>掌握薄弱题目：</strong>以下题目得分低于 ${criticalThreshold}% 或未作答，请<strong class="text-danger">重点关注</strong>：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`,
                 icon: 'bi-journal-x text-danger', priority: 1
             });
-            console.log("[generateIndividualTrainingSuggestions V2]   -> Critical questions suggestion added.");
+            // // console.log("[generateIndividualTrainingSuggestions V2]   -> Critical questions suggestion added.");
         } else if (weakQuestions.length > 0) {
             let questionListHTML = weakQuestions.slice(0, 3).map(q => {
                 const scoreText = `<span class="badge bg-warning">${q.score}/${q.standardScore}</span>`;
@@ -1156,12 +1165,12 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                 text: `<strong>待改进题目：</strong>以下题目得分介于 ${criticalThreshold}%-${weakThreshold}%，有提升空间：<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`,
                 icon: 'bi-journal-check text-warning', priority: 3
             });
-            console.log("[generateIndividualTrainingSuggestions V2]   -> Weak questions suggestion added.");
+            // // console.log("[generateIndividualTrainingSuggestions V2]   -> Weak questions suggestion added.");
         }
-        console.log("[generateIndividualTrainingSuggestions V2] Step 4 DONE. Current suggestions count:", suggestions.length);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 4 DONE. Current suggestions count:", suggestions.length);
 
         // --- 5. 总体评价与学习方法建议 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 5: Generating overall evaluation and learning method...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 5: Generating overall evaluation and learning method...");
         if (overallScoreRate < criticalThreshold) {
              suggestions.push({
                type: 'overall_critical',
@@ -1173,7 +1182,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                text: `<strong>学习建议：</strong><strong class="text-danger">必须系统复习</strong>，对照教材/手册，逐一攻克薄弱点，多向同事或师傅请教，增加实操练习。`,
                icon: 'bi-mortarboard-fill text-danger', priority: 2
            });
-           console.log("[generateIndividualTrainingSuggestions V2]   -> Critical overall evaluation added.");
+           // // console.log("[generateIndividualTrainingSuggestions V2]   -> Critical overall evaluation added.");
         } else if (overallScoreRate < weakThreshold) {
            suggestions.push({
                type: 'overall_weak',
@@ -1185,7 +1194,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                text: `<strong>学习建议：</strong><strong class="text-warning">查漏补缺</strong>，重点巩固易错点，参与模拟演练，加强案例分析。`,
                icon: 'bi-mortarboard-fill text-warning', priority: 3
            });
-           console.log("[generateIndividualTrainingSuggestions V2]   -> Weak overall evaluation added.");
+           // // console.log("[generateIndividualTrainingSuggestions V2]   -> Weak overall evaluation added.");
         } else if (overallScoreRate < goodThreshold) {
            suggestions.push({
                type: 'overall_good',
@@ -1197,7 +1206,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                text: `<strong>学习建议：</strong><strong class="text-success">持续学习</strong>，关注业务更新和新技术，尝试解决更复杂的问题。`,
                icon: 'bi-mortarboard-fill text-success', priority: 4
            });
-           console.log("[generateIndividualTrainingSuggestions V2]   -> Good overall evaluation added.");
+           // // console.log("[generateIndividualTrainingSuggestions V2]   -> Good overall evaluation added.");
         } else { 
            suggestions.push({
                type: 'overall_excellent',
@@ -1209,12 +1218,12 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                text: `<strong>学习建议：</strong><strong class="text-primary">保持领先</strong>，可以深入研究特定领域，分享经验，参与指导新员工。`,
                icon: 'bi-mortarboard-fill text-primary', priority: 5
            });
-           console.log("[generateIndividualTrainingSuggestions V2]   -> Excellent overall evaluation added.");
+           // // console.log("[generateIndividualTrainingSuggestions V2]   -> Excellent overall evaluation added.");
         }
-        console.log("[generateIndividualTrainingSuggestions V2] Step 5 DONE. Current suggestions count:", suggestions.length);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 5 DONE. Current suggestions count:", suggestions.length);
 
         // --- 6. 最终检查与默认建议 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 6: Final checks and default suggestion...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 6: Final checks and default suggestion...");
     if (suggestions.length === 0) {
          suggestions.push({
                 type: 'default_ok',
@@ -1222,7 +1231,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                 icon: 'bi-info-circle text-secondary',
                 priority: 10
             });
-            console.log("[generateIndividualTrainingSuggestions V2]   -> No specific issues found, adding default suggestion.");
+            // // console.log("[generateIndividualTrainingSuggestions V2]   -> No specific issues found, adding default suggestion.");
         } else if (!hasCriticalSection && !hasWeakSection && overallScoreRate >= goodThreshold && (!trendSuggestion || !trendSuggestion.type.includes('down'))) {
             suggestions.push({
                 type: 'overall_praise',
@@ -1230,14 +1239,14 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
                 icon: 'bi-hand-thumbs-up-fill text-primary',
                 priority: 5 // 让它排在优秀评价和学习建议之后
             });
-            console.log("[generateIndividualTrainingSuggestions V2]   -> Adding praise suggestion.");
+            // // console.log("[generateIndividualTrainingSuggestions V2]   -> Adding praise suggestion.");
         }
-        console.log("[generateIndividualTrainingSuggestions V2] Step 6 DONE. Current suggestions count:", suggestions.length);
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 6 DONE. Current suggestions count:", suggestions.length);
 
         // --- 7. 排序与返回 ---
-        console.log("[generateIndividualTrainingSuggestions V2] Step 7: Sorting and returning suggestions...");
+        // // console.log("[generateIndividualTrainingSuggestions V2] Step 7: Sorting and returning suggestions...");
         suggestions.sort((a, b) => a.priority - b.priority);
-        console.log("[generateIndividualTrainingSuggestions V2] FINAL Generated Suggestions (before return):", JSON.parse(JSON.stringify(suggestions))); // Deep copy for logging
+        // // console.log("[generateIndividualTrainingSuggestions V2] FINAL Generated Suggestions (before return):", JSON.parse(JSON.stringify(suggestions))); // Deep copy for logging
         return suggestions;
 
     } catch (error) {
@@ -1294,7 +1303,7 @@ function displayIndividualTrainingSuggestions(suggestions) {
 
 // **** 重新定义：生成多次测评综合培训建议 ****
 function generateCombinedTrainingSuggestions(records) {
-    console.log("[generateCombinedTrainingSuggestions V2] Generating combined suggestions for", records.length, "records");
+    // // console.log("[generateCombinedTrainingSuggestions V2] Generating combined suggestions for", records.length, "records");
     const suggestions = [];
     if (!records || records.length === 0) {
          return [{ type: 'warning', text: '无法生成综合建议：缺少测评记录数据。', icon: 'bi-exclamation-circle-fill text-warning', priority: 0 }];
@@ -1374,7 +1383,7 @@ function generateCombinedTrainingSuggestions(records) {
     }
 
     suggestions.sort((a, b) => a.priority - b.priority);
-    console.log("[generateCombinedTrainingSuggestions V2] Generated Suggestions:", suggestions);
+    // // console.log("[generateCombinedTrainingSuggestions V2] Generated Suggestions:", suggestions);
     return suggestions;
 }
 
@@ -1393,7 +1402,7 @@ function formatDate(dateString) {
 
 // 修改：loadEmployeeList，增加一个可选参数用于后续操作
 function loadEmployeeList(callback) { 
-    console.log("[loadEmployeeList] 开始加载员工列表..."); 
+    // // // console.log("[loadEmployeeList] 开始加载员工列表...");
     const employeeSelect = document.getElementById('employeeSelect');
     const positionFilter = document.getElementById('employeePosition')?.value || 'all';
     
@@ -1407,8 +1416,8 @@ function loadEmployeeList(callback) {
     
     // 从 localStorage 加载所有历史记录
     const allHistoryStr = localStorage.getItem('assessmentHistory');
-    console.log("localStorage中的assessmentHistory:", allHistoryStr);
-    
+    // // // console.log("localStorage中的assessmentHistory:", allHistoryStr);
+
     if (!allHistoryStr) {
         console.error("localStorage中没有assessmentHistory数据");
         const option = document.createElement('option');
@@ -1424,7 +1433,7 @@ function loadEmployeeList(callback) {
     }
     
     const allHistory = JSON.parse(allHistoryStr || '[]');
-    console.log(`[loadEmployeeList] 解析到 ${allHistory.length} 条历史记录.`); 
+    // // // console.log(`[loadEmployeeList] 解析到 ${allHistory.length} 条历史记录.`);
     
     // 提取所有不重复的员工信息
     const employeesMap = new Map();
@@ -1432,9 +1441,9 @@ function loadEmployeeList(callback) {
     allHistory.forEach((record, index) => {
         const employeeId = record?.userInfo?.id || record?.userInfo?.employeeId;
         const employeeName = record?.userInfo?.name;
-        const position = record?.position || record?.userInfo?.position || '未知岗位'; 
-        console.log(`[loadEmployeeList] 检查记录 ${index} (ID: ${record?.id}): ` +
-                    `员工ID='${employeeId}', 姓名='${employeeName}', 岗位='${position}'`);
+        const position = record?.position || record?.userInfo?.position || '未知岗位';
+        // // // console.log(`[loadEmployeeList] 检查记录 ${index} (ID: ${record?.id}): ` +
+        // // //             `员工ID='${employeeId}', 姓名='${employeeName}', 岗位='${position}'`);
         
         // **** Add explicit check for missing userInfo or key fields ****
         if (!record?.userInfo) {
@@ -1452,7 +1461,7 @@ function loadEmployeeList(callback) {
 
         // **** Now we know key fields exist ****
         if (!employeesMap.has(employeeId)) {
-             console.log(`[loadEmployeeList]   -> 添加新员工到 Map: ID='${employeeId}', 姓名='${employeeName}', 记录的岗位='${position}'`);
+             // // // console.log(`[loadEmployeeList]   -> 添加新员工到 Map: ID='${employeeId}', 姓名='${employeeName}', 记录的岗位='${position}'`);
             employeesMap.set(employeeId, {
                 id: employeeId,
                 name: employeeName,
@@ -1467,31 +1476,31 @@ function loadEmployeeList(callback) {
                               `将保留第一个遇到的姓名。`);
             }
              // Optionally update position if current one is more specific? For now, keep first.
-            console.log(`[loadEmployeeList]   -> 员工 ID='${employeeId}' (${employeeName}) 已存在于 Map.`);
+            // // // console.log(`[loadEmployeeList]   -> 员工 ID='${employeeId}' (${employeeName}) 已存在于 Map.`);
         }
     });
     
-    console.log("[loadEmployeeList] 构建完成的 employeesMap:", employeesMap);
+    // // // console.log("[loadEmployeeList] 构建完成的 employeesMap:", employeesMap);
     allEmployees = Array.from(employeesMap.values());
-    console.log("[loadEmployeeList] 构建完成的 allEmployees 数组:", allEmployees);
-    
-    filterEmployeesByPosition(); 
-    
+    // // // console.log("[loadEmployeeList] 构建完成的 allEmployees 数组:", allEmployees);
+
+    filterEmployeesByPosition();
+
     if (typeof callback === 'function') {
         callback();
     }
-    
+
     if (allEmployees.length === 0) {
-        document.getElementById('individualAnalysisPlaceholder').innerHTML = 
+        document.getElementById('individualAnalysisPlaceholder').innerHTML =
             '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>未从测评记录中找到有效的员工信息，请确保测评时填写了完整的个人信息。</div>';
     }
-    console.log("[loadEmployeeList] 结束.");
+    // // // console.log("[loadEmployeeList] 结束.");
 }
 
 // 新增：加载员工列表并预选员工及测评记录
 function loadEmployeeListAndSelect(employeeIdToSelect, assessmentIdToSelect) {
     loadEmployeeList(() => {
-        console.log(`Callback after loadEmployeeList: Selecting employee ${employeeIdToSelect}`);
+        // // // console.log(`Callback after loadEmployeeList: Selecting employee ${employeeIdToSelect}`);
         // 确保员工下拉列表已填充
         const employeeSelect = document.getElementById('employeeSelect');
         if (employeeSelect) {
@@ -1499,15 +1508,15 @@ function loadEmployeeListAndSelect(employeeIdToSelect, assessmentIdToSelect) {
             employeeSelect.value = employeeIdToSelect;
             // 触发加载测评记录列表
             loadEmployeeAssessments(() => {
-                console.log(`Callback after loadEmployeeAssessments: Selecting assessment ${assessmentIdToSelect}`);
+                // // // console.log(`Callback after loadEmployeeAssessments: Selecting assessment ${assessmentIdToSelect}`);
                  // 确保测评记录下拉列表已填充
                  const recordSelect = document.getElementById('assessmentRecordSelect');
                  if (recordSelect) {
                      // **** 添加日志 ****
-                     console.log(`[Debug] loadEmployeeListAndSelect: Setting recordSelect.value to assessmentIdToSelect = ${assessmentIdToSelect}`);
+                     // // // // console.log(`[Debug] loadEmployeeListAndSelect: Setting recordSelect.value to assessmentIdToSelect = ${assessmentIdToSelect}`);
                      recordSelect.value = assessmentIdToSelect; 
                      // **** 添加日志 ****
-                     console.log(`[Debug] loadEmployeeListAndSelect: Calling loadIndividualAnalysisFromSelection after setting value.`);
+                     // // // // console.log(`[Debug] loadEmployeeListAndSelect: Calling loadIndividualAnalysisFromSelection after setting value.`);
                      loadIndividualAnalysisFromSelection(); // 触发加载
                  } else {
                      console.error("无法找到 assessmentRecordSelect 元素");
@@ -1525,7 +1534,7 @@ function loadEmployeeAssessments() {
     const assessmentRecordSelect = document.getElementById('assessmentRecordSelect');
     const selectedEmployeeId = employeeSelect.value;
 
-    console.log(`[loadEmployeeAssessments] 开始加载测评记录. 选中的员工 ID (selectedEmployeeId): ${selectedEmployeeId}`); // Log start
+    // // // console.log(`[loadEmployeeAssessments] 开始加载测评记录. 选中的员工 ID (selectedEmployeeId): ${selectedEmployeeId}`); // Log start
 
     assessmentRecordSelect.innerHTML = '<option value="">-- 正在加载记录... --</option>';
     assessmentRecordSelect.disabled = true;
@@ -1533,17 +1542,17 @@ function loadEmployeeAssessments() {
 
     if (!selectedEmployeeId) {
         assessmentRecordSelect.innerHTML = '<option value="">-- 请先选择员工 --</option>';
-        console.log("[loadEmployeeAssessments] 未选择员工，退出。");
+        // // // console.log("[loadEmployeeAssessments] 未选择员工，退出。");
         return;
     }
 
     // 从 localStorage 加载历史记录
     const allHistoryStr = localStorage.getItem('assessmentHistory');
     const allHistory = JSON.parse(allHistoryStr || '[]');
-    console.log(`[loadEmployeeAssessments] 从 localStorage 加载了 ${allHistory.length} 条记录.`);
+    // // // console.log(`[loadEmployeeAssessments] 从 localStorage 加载了 ${allHistory.length} 条记录.`);
 
     // 筛选出该员工的所有记录，并按时间倒序
-    console.log(`[loadEmployeeAssessments] 开始筛选 ID 为 '${selectedEmployeeId}' 的记录...`);
+    // // // console.log(`[loadEmployeeAssessments] 开始筛选 ID 为 '${selectedEmployeeId}' 的记录...`);
     const employeeHistory = allHistory
         .filter(record => {
              // **** Stricter check for userInfo ****
@@ -1567,11 +1576,11 @@ function loadEmployeeAssessments() {
          })
         .sort((a, b) => (new Date(b.timestamp || b.endTime)) - (new Date(a.timestamp || a.endTime)));
     
-    console.log(`[loadEmployeeAssessments] 筛选结束. 为员工 ${selectedEmployeeId} 找到 ${employeeHistory.length} 条记录.`);
+    // // // console.log(`[loadEmployeeAssessments] 筛选结束. 为员工 ${selectedEmployeeId} 找到 ${employeeHistory.length} 条记录.`);
 
     if (employeeHistory.length === 0) {
         assessmentRecordSelect.innerHTML = '<option value="">该员工无测评记录</option>';
-        console.log("[loadEmployeeAssessments] 未找到该员工的记录.");
+        // // // console.log("[loadEmployeeAssessments] 未找到该员工的记录.");
         return;
     }
 
@@ -1584,7 +1593,7 @@ function loadEmployeeAssessments() {
         summaryOption.value = 'all';
         summaryOption.textContent = `所有记录 (${employeeHistory.length}条) - 综合分析`;
         assessmentRecordSelect.appendChild(summaryOption);
-        console.log("[loadEmployeeAssessments] 已添加 '综合分析 (all)' 选项.");
+        // // // console.log("[loadEmployeeAssessments] 已添加 '综合分析 (all)' 选项.");
     }
 
     employeeHistory.forEach(record => {
@@ -1595,27 +1604,27 @@ function loadEmployeeAssessments() {
         const positionName = getPositionName(record.position || record.userInfo?.position);
         option.textContent = `${formatSimpleDateTime(recordDate)} - ${positionName} - 得分率: ${scoreRateText}`;
         // **** Log adding record option ****
-        console.log(`[loadEmployeeAssessments]   -> 添加记录选项: ID='${record.id}', Text='${option.textContent}'`);
+        // // // console.log(`[loadEmployeeAssessments]   -> 添加记录选项: ID='${record.id}', Text='${option.textContent}'`);
         assessmentRecordSelect.appendChild(option);
     });
-    console.log("[loadEmployeeAssessments] 已填充测评记录下拉框.");
+    // // // console.log("[loadEmployeeAssessments] 已填充测评记录下拉框.");
 
     assessmentRecordSelect.disabled = false;
 
     // **** 新增：默认触发加载综合分析 (如果添加了'all'选项) ****
     if (assessmentRecordSelect.querySelector('option[value="all"]')) {
         assessmentRecordSelect.value = 'all'; // 默认选中综合分析
-        console.log("[loadEmployeeAssessments] 默认选中 '综合分析 (all)' 并将加载分析.");
+        // // // console.log("[loadEmployeeAssessments] 默认选中 '综合分析 (all)' 并将加载分析.");
         loadIndividualAnalysisFromSelection(); // 触发加载
     } else if (employeeHistory.length > 0) {
         // 如果只有一条记录，默认选中该记录并加载
         assessmentRecordSelect.value = employeeHistory[0].id;
-        console.log(`[loadEmployeeAssessments] 只有一条记录，默认选中记录 ${employeeHistory[0].id} 并将加载分析.`);
+        // // // console.log(`[loadEmployeeAssessments] 只有一条记录，默认选中记录 ${employeeHistory[0].id} 并将加载分析.`);
         loadIndividualAnalysisFromSelection();
     } else {
-         console.log("[loadEmployeeAssessments] 无默认选项被选中.");
+         // // // console.log("[loadEmployeeAssessments] 无默认选项被选中.");
     }
-    console.log("[loadEmployeeAssessments] 结束."); // End log
+    // // // console.log("[loadEmployeeAssessments] 结束."); // End log
 }
 
 // **** 修改: 处理综合分析和单次分析的加载 ****
@@ -1626,13 +1635,13 @@ function loadIndividualAnalysisFromSelection() {
     const selectedEmployeeId = employeeSelect ? employeeSelect.value : null; // 员工ID
 
     // **** 增强日志记录 ****
-    console.log(`[loadIndividualAnalysisFromSelection] START. EmployeeID: ${selectedEmployeeId}, Selected Record Value: ${selectedValue}`);
+    // // // console.log(`[loadIndividualAnalysisFromSelection] START. EmployeeID: ${selectedEmployeeId}, Selected Record Value: ${selectedValue}`);
 
     // 清空现有内容并显示占位符 (先隐藏内容，显示占位符)
     clearIndividualAnalysis(); 
 
     if (!selectedValue || !selectedEmployeeId) {
-        console.warn("[loadIndividualAnalysisFromSelection] Missing employee or record selection. Placeholder remains visible.");
+        // // // console.warn("[loadIndividualAnalysisFromSelection] Missing employee or record selection. Placeholder remains visible.");
         // 更新占位符提示
         document.getElementById('individualAnalysisPlaceholder').innerHTML = 
             '<p class="text-muted text-center mt-3">请在上方筛选并选择员工及测评记录。</p>';
@@ -1643,19 +1652,19 @@ function loadIndividualAnalysisFromSelection() {
 
     // 从 localStorage 加载完整历史记录
     const allHistory = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    console.log(`[loadIndividualAnalysisFromSelection] Loaded ${allHistory.length} total history records.`);
+    // // // console.log(`[loadIndividualAnalysisFromSelection] Loaded ${allHistory.length} total history records.`);
 
     let analysisTitle = '';
     let recordsToAnalyze = [];
 
     if (selectedValue === 'all') {
         // 综合分析：筛选该员工的所有记录
-        console.log(`[loadIndividualAnalysisFromSelection] Filtering for ALL records of employee ${selectedEmployeeId}...`);
+        // // // console.log(`[loadIndividualAnalysisFromSelection] Filtering for ALL records of employee ${selectedEmployeeId}...`);
         recordsToAnalyze = allHistory
             .filter(record => record?.userInfo?.employeeId == selectedEmployeeId) // Use == for employeeId too, just in case
             .sort((a, b) => new Date(a.timestamp || a.endTime) - new Date(b.timestamp || b.endTime)); // Sort oldest to newest for trend charts
         
-        console.log(`[loadIndividualAnalysisFromSelection] Found ${recordsToAnalyze.length} records for combined analysis.`);
+        // // // console.log(`[loadIndividualAnalysisFromSelection] Found ${recordsToAnalyze.length} records for combined analysis.`);
 
         if (recordsToAnalyze.length > 0) {
              const employeeName = recordsToAnalyze[0].userInfo.name || `员工 ${selectedEmployeeId}`; // Get name from first record
@@ -1666,14 +1675,14 @@ function loadIndividualAnalysisFromSelection() {
 
     } else {
         // 单次分析：查找指定 ID 的记录
-        console.log(`[loadIndividualAnalysisFromSelection] Finding specific record with ID: ${selectedValue} (Type: ${typeof selectedValue})`);
+        // // // console.log(`[loadIndividualAnalysisFromSelection] Finding specific record with ID: ${selectedValue} (Type: ${typeof selectedValue})`);
         const selectedRecord = allHistory.find(record => record.id == selectedValue); // 使用 '==' 进行比较
 
         if (selectedRecord) {
             recordsToAnalyze.push(selectedRecord);
             const employeeName = selectedRecord.userInfo?.name || `员工 ${selectedEmployeeId}`;
             analysisTitle = `${employeeName} - ${formatSimpleDateTime(selectedRecord.timestamp || selectedRecord.endTime)} 测评记录`;
-            console.log("[loadIndividualAnalysisFromSelection] Found specific record:", selectedRecord);
+            // // // console.log("[loadIndividualAnalysisFromSelection] Found specific record:", selectedRecord);
         } else {
             console.error(`[loadIndividualAnalysisFromSelection] Error: Could not find record with ID ${selectedValue}.`);
             document.getElementById('individualAnalysisPlaceholder').innerHTML = 
@@ -1686,7 +1695,7 @@ function loadIndividualAnalysisFromSelection() {
 
     // 如果最终没有找到任何可分析的记录
     if (recordsToAnalyze.length === 0) {
-        console.warn("[loadIndividualAnalysisFromSelection] No records found to analyze after filtering/finding.");
+        // // // console.warn("[loadIndividualAnalysisFromSelection] No records found to analyze after filtering/finding.");
         document.getElementById('individualAnalysisPlaceholder').innerHTML = 
             '<p class="text-muted text-center mt-3">未找到符合条件的测评记录，无法加载分析。</p>'; 
         document.getElementById('individualAnalysisPlaceholder').style.display = 'block'; // 确保占位符可见
@@ -1695,7 +1704,7 @@ function loadIndividualAnalysisFromSelection() {
     }
 
     // **** 确认有数据后，再更新UI和调用分析 ****
-    console.log(`[loadIndividualAnalysisFromSelection] Proceeding with ${recordsToAnalyze.length} record(s). Analysis Title: ${analysisTitle}`);
+    // // // console.log(`[loadIndividualAnalysisFromSelection] Proceeding with ${recordsToAnalyze.length} record(s). Analysis Title: ${analysisTitle}`);
 
     // 更新分析标题
     document.getElementById('selectedEmployeeInfo').textContent = analysisTitle;
@@ -1705,14 +1714,14 @@ function loadIndividualAnalysisFromSelection() {
     const contentElement = document.getElementById('individualAnalysisContent');
 
     // **** Add check for element validity ****
-    console.log('[loadIndividualAnalysisFromSelection] Checking element references before visibility switch:');
-    console.log('  Placeholder Element:', placeholderElement);
-    console.log('  Content Element:', contentElement);
+    // // // console.log('[loadIndividualAnalysisFromSelection] Checking element references before visibility switch:');
+    // // // console.log('  Placeholder Element:', placeholderElement);
+    // // // console.log('  Content Element:', contentElement);
 
     if (placeholderElement) {
         // **** Force hide with inline style ****
         placeholderElement.style.display = 'none'; 
-        console.log('[loadIndividualAnalysisFromSelection] Applied placeholderElement.style.display = \'none\'.');
+        // // // console.log('[loadIndividualAnalysisFromSelection] Applied placeholderElement.style.display = \'none\'.');
     } else {
         console.error('[loadIndividualAnalysisFromSelection] Placeholder element not found!');
     }
@@ -1721,7 +1730,7 @@ function loadIndividualAnalysisFromSelection() {
         contentElement.classList.remove('d-none');
         // **** Force show with inline style ****
         contentElement.style.display = 'block'; 
-        console.log('[loadIndividualAnalysisFromSelection] Applied contentElement.style.display = \'block\'.');
+        // // // console.log('[loadIndividualAnalysisFromSelection] Applied contentElement.style.display = \'block\'.');
     } else {
         console.error('[loadIndividualAnalysisFromSelection] Content element not found!');
     }
@@ -1729,18 +1738,18 @@ function loadIndividualAnalysisFromSelection() {
     // **** Visibility Check Log (keep this) ****
     if(contentElement) { // Only check if element was found
         const computedDisplay = window.getComputedStyle(contentElement).display;
-        console.log(`[loadIndividualAnalysisFromSelection] Visibility Check: #individualAnalysisContent computed display is now '${computedDisplay}'.`); 
+        // // // console.log(`[loadIndividualAnalysisFromSelection] Visibility Check: #individualAnalysisContent computed display is now '${computedDisplay}'.`); 
     }
-    // console.log("[loadIndividualAnalysisFromSelection] Switched visibility: Placeholder hidden, Content shown."); // Redundant with specific logs above
+    // // // console.log("[loadIndividualAnalysisFromSelection] Switched visibility: Placeholder hidden, Content shown."); // Redundant with specific logs above
 
     // 调用分析和渲染函数
     generateIndividualAnalysis(recordsToAnalyze); 
-    console.log("[loadIndividualAnalysisFromSelection] END.");
+    // // // console.log("[loadIndividualAnalysisFromSelection] END.");
 }
 
 // **** 新增/重构：生成个人分析（处理单条或多条记录） ****
 function generateIndividualAnalysis(records) {
-    console.log(`[generateIndividualAnalysis] START. Received ${records?.length || 0} records.`);
+    // // // // // // console.log(`[generateIndividualAnalysis] START. Received ${records?.length || 0} records.`);
 
     if (!records || records.length === 0) {
         console.warn("[generateIndividualAnalysis] Received empty records array. Aborting.");
@@ -1750,7 +1759,7 @@ function generateIndividualAnalysis(records) {
     }
 
     // 清除旧图表 (移到这里，确保每次分析前都清理)
-    console.log("[generateIndividualAnalysis] Clearing existing charts...");
+    // // // // // // console.log("[generateIndividualAnalysis] Clearing existing charts...");
     clearChart('individualSectionChart');
     clearChart('historicalScoresChart');
 
@@ -1763,7 +1772,7 @@ function generateIndividualAnalysis(records) {
     if (records.length === 1) {
         // --- 单次测评分析 --- 
         const record = records[0];
-        console.log("[generateIndividualAnalysis] Analyzing SINGLE record:", record.id);
+        // // // // // // console.log("[generateIndividualAnalysis] Analyzing SINGLE record:", record.id);
         
         // **** 新增：获取该员工的所有历史记录，用于建议生成 ****
         const employeeId = record?.userInfo?.employeeId || record?.userInfo?.id;
@@ -1773,19 +1782,19 @@ function generateIndividualAnalysis(records) {
              relevantHistory = allHistory
                 .filter(r => (r?.userInfo?.employeeId || r?.userInfo?.id) == employeeId)
                 .sort((a, b) => new Date(a.timestamp || a.endTime) - new Date(b.timestamp || b.endTime)); // Sort oldest to newest
-            console.log(`[generateIndividualAnalysis] Found ${relevantHistory.length} total records for employee ${employeeId} for suggestion generation.`);
+            // // // // // // console.log(`[generateIndividualAnalysis] Found ${relevantHistory.length} total records for employee ${employeeId} for suggestion generation.`);
         }
         // **** 历史记录获取结束 ****
         
         // 1. 板块得分分布 (包含未得分)
-        console.log("[generateIndividualAnalysis] Calculating individual section performance...");
+        // // // // // // console.log("[generateIndividualAnalysis] Calculating individual section performance...");
         const sectionPerformanceResult = calculateIndividualSectionPerformance(record); 
 
         // **** 清空旧的小饼图容器 ****
         const breakdownContainer = document.getElementById('individualSectionBreakdownCharts');
         if (breakdownContainer) breakdownContainer.innerHTML = '';
 
-        console.log("[generateIndividualAnalysis] Rendering individual section chart (with unscored)...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering individual section chart (with unscored)...");
         // **** 调用修改后的图表渲染函数，传递完整结果对象 ****
         renderIndividualSectionChart(sectionPerformanceResult); // Render the main doughnut chart
 
@@ -1793,79 +1802,79 @@ function generateIndividualAnalysis(records) {
         if (sectionPerformanceResult.performance && breakdownContainer) {
             Object.entries(sectionPerformanceResult.performance).forEach(([sectionName, data]) => {
                 // **** 添加日志 ****
-                console.log(`[generateIndividualAnalysis] Processing section for breakdown chart: ${sectionName}`, data);
+                // // // // // // console.log(`[generateIndividualAnalysis] Processing section for breakdown chart: ${sectionName}`, data);
                 if (data.max > 0) { // Only render if the section has scorable questions
-                    console.log(`  -> Calling renderSectionBreakdownChart for ${sectionName}`); // **** 添加日志 ****
+                    // // // // // // console.log(`  -> Calling renderSectionBreakdownChart for ${sectionName}`); // **** 添加日志 ****
                     renderSectionBreakdownChart(sectionName, data.score, data.max, 'individualSectionBreakdownCharts');
                 } else {
-                     console.log(`  -> Skipping render for ${sectionName} because max score is 0.`); // **** 添加日志 ****
+                     // // // // // // console.log(`  -> Skipping render for ${sectionName} because max score is 0.`); // **** 添加日志 ****
                 }
             });
         }
         // **** 渲染小饼图结束 ****
 
         // 2. 题目掌握情况
-        console.log("[generateIndividualAnalysis] Calculating individual question performance...");
+        // // // // // // console.log("[generateIndividualAnalysis] Calculating individual question performance...");
         const questionPerformance = calculateIndividualQuestionPerformance(record);
-        console.log("[generateIndividualAnalysis] Rendering question performance lists...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering question performance lists...");
         renderQuestionPerformanceLists(questionPerformance.best, 'individualBestQuestionsList');
         renderQuestionPerformanceLists(questionPerformance.worst, 'individualWorstQuestionsList');
 
         // 3. 历史成绩对比 (对于单次，只显示本次得分点)
-        console.log("[generateIndividualAnalysis] Preparing single history point...");
+        // // // // // // console.log("[generateIndividualAnalysis] Preparing single history point...");
         const singleHistoryPoint = [{
             timestamp: record.timestamp || record.endTime,
             scoreRate: record.score?.scoreRate || 0
         }];
-        console.log("[generateIndividualAnalysis] Rendering historical scores chart (single point)...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering historical scores chart (single point)...");
         renderHistoricalScoresChart(singleHistoryPoint);
         
         // 4. 个人培训建议 (基于本次，并结合历史)
-        console.log("[generateIndividualAnalysis] Generating individual training suggestions...");
+        // // // // // // console.log("[generateIndividualAnalysis] Generating individual training suggestions...");
         const suggestions = generateIndividualTrainingSuggestions(record, relevantHistory); 
         // **** 新增日志：检查接收到的 suggestions 值 ****
-        console.log("[generateIndividualAnalysis] Received suggestions:", suggestions);
+        // // // // // // console.log("[generateIndividualAnalysis] Received suggestions:", suggestions);
         
-        console.log("[generateIndividualAnalysis] Rendering training suggestions...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering training suggestions...");
         renderTrainingSuggestions(suggestions, 'individualTrainingSuggestions');
 
     } else {
         // --- 多次测评综合分析 --- 
-        console.log(`[generateIndividualAnalysis] Analyzing COMBINED ${records.length} records.`);
+        // // // // // // console.log(`[generateIndividualAnalysis] Analyzing COMBINED ${records.length} records.`);
         
         // 1. 平均板块得分率
-        console.log("[generateIndividualAnalysis] Calculating average section scores...");
+        // // // // // // console.log("[generateIndividualAnalysis] Calculating average section scores...");
         const avgSectionScores = calculateAverageSectionScores(records);
-        console.log("[generateIndividualAnalysis] Rendering average section chart (as Bar chart)...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering average section chart (as Bar chart)...");
         // **** 综合分析也用 Bar chart 显示平均得分率 ****
         renderPositionSectionMasteryChart(avgSectionScores, `平均板块得分率 (%) - ${records.length}条记录`);
         
         // 2. 综合题目掌握情况
-        console.log("[generateIndividualAnalysis] Analyzing combined question performance...");
+        // // // // // // console.log("[generateIndividualAnalysis] Analyzing combined question performance...");
         const combinedQuestionPerformance = analyzeCombinedQuestionPerformance(records);
-        console.log("[generateIndividualAnalysis] Rendering combined question performance lists...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering combined question performance lists...");
         renderQuestionPerformanceLists(combinedQuestionPerformance.best, 'individualBestQuestionsList', true); 
         renderQuestionPerformanceLists(combinedQuestionPerformance.worst, 'individualWorstQuestionsList', true);
 
         // 3. 历史成绩趋势
-        console.log("[generateIndividualAnalysis] Preparing history data for trend chart...");
+        // // // // // // console.log("[generateIndividualAnalysis] Preparing history data for trend chart...");
         const historyData = records.map(r => ({ 
             timestamp: r.timestamp || r.endTime, 
             scoreRate: r.score?.scoreRate || 0 
         })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)); // 确保按时间排序
-        console.log("[generateIndividualAnalysis] Rendering historical scores trend chart...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering historical scores trend chart...");
         renderHistoricalScoresChart(historyData);
         
         // 4. 综合培训建议
-        console.log("[generateIndividualAnalysis] Generating combined training suggestions...");
+        // // // // // // console.log("[generateIndividualAnalysis] Generating combined training suggestions...");
         const combinedSuggestions = generateCombinedTrainingSuggestions(records); // 确保此函数存在且正确
         // **** 新增日志：检查接收到的 combinedSuggestions 值 ****
-        console.log("[generateIndividualAnalysis] Received combined suggestions:", combinedSuggestions);
+        // // // // // // console.log("[generateIndividualAnalysis] Received combined suggestions:", combinedSuggestions);
         
-        console.log("[generateIndividualAnalysis] Rendering combined training suggestions...");
+        // // // // // // console.log("[generateIndividualAnalysis] Rendering combined training suggestions...");
         renderTrainingSuggestions(combinedSuggestions, 'individualTrainingSuggestions');
     }
-    console.log("[generateIndividualAnalysis] END.");
+    // // // // // // console.log("[generateIndividualAnalysis] END.");
 }
 
 // 计算个人单次测评各板块得分 (保持不变)
@@ -1932,7 +1941,7 @@ function analyzeQuestionPerformance(record) { /* ... */ }
 
 // 分析多次测评综合题目掌握情况 (新增)
 function analyzeCombinedQuestionPerformance(records) { /* ... implement ... */ 
-     console.log("Analyzing combined question performance for", records.length, "records");
+     // // // // // // // console.log("Analyzing combined question performance for", records.length, "records");
     const questionStats = {}; // { questionId: { content: '...', totalScore: 0, totalMaxScore: 0, appearances: 0 } }
 
     records.forEach(record => {
@@ -1968,14 +1977,14 @@ function analyzeCombinedQuestionPerformance(records) { /* ... implement ... */
     const best = performanceList.slice(0, 5); // Show top 5 best
     const worst = performanceList.filter(q => q.avgScoreRate < 80).reverse().slice(0, 5); // Show bottom 5 worst (below 80% avg)
     
-    console.log("Combined Best Questions:", best);
-    console.log("Combined Worst Questions:", worst);
+    // // // // // // // console.log("Combined Best Questions:", best);
+    // // // // // // // // console.log("Combined Worst Questions:", worst);
     return { best, worst };
 }
 
 // 生成多次测评综合培训建议 (新增)
 function generateCombinedTrainingSuggestions(records) { /* ... implement ... */ 
-     console.log("Generating combined training suggestions for", records.length, "records");
+     // // // // // // // // console.log("Generating combined training suggestions for", records.length, "records");
     const avgSectionScores = calculateAverageSectionScores(records);
     const suggestions = [];
     const sortedSections = Object.entries(avgSectionScores).sort(([, rateA], [, rateB]) => rateA - rateB);
@@ -1991,7 +2000,7 @@ function generateCombinedTrainingSuggestions(records) { /* ... implement ... */
     if (suggestions.length === 0) {
          suggestions.push({ text: '整体表现良好，请继续保持！', type: 'success' });
     }
-    console.log("Combined Suggestions:", suggestions);
+    // // // // // // // // console.log("Combined Suggestions:", suggestions);
     return suggestions;
 }
 
@@ -1999,13 +2008,13 @@ function generateCombinedTrainingSuggestions(records) { /* ... implement ... */
 
 // 渲染题目列表 
 function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
-    console.log(`[renderQuestionPerformanceLists] START. List ID: ${listId}, isCombined: ${isCombined}. Data:`, questions);
+    // // // // // // // // console.log(`[renderQuestionPerformanceLists] START. List ID: ${listId}, isCombined: ${isCombined}. Data:`, questions);
     const listElement = document.getElementById(listId);
     if (!listElement) {
         console.error(`[renderQuestionPerformanceLists] ERROR: Cannot find list element with ID: ${listId}`);
         return;
     }
-    console.log(`[renderQuestionPerformanceLists] Found list element:`, listElement);
+    // // // // // // // console.log(`[renderQuestionPerformanceLists] Found list element:`, listElement);
     listElement.innerHTML = ''; // Clear previous items
 
     if (!questions || questions.length === 0) {
@@ -2032,9 +2041,9 @@ function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
             }
             li.innerHTML = `<span>${text}</span> ${scoreInfo}`;
             listElement.appendChild(li);
-            // console.log(`[renderQuestionPerformanceLists] Appended item ${index + 1} to ${listId}`); // Optional: log each item append
+            // // // // // // // // console.log(`[renderQuestionPerformanceLists] Appended item ${index + 1} to ${listId}`); // Optional: log each item append
         });
-        console.log(`[renderQuestionPerformanceLists] Successfully rendered ${questions.length} items to ${listId}.`);
+        // // // // // // // // console.log(`[renderQuestionPerformanceLists] Successfully rendered ${questions.length} items to ${listId}.`);
     } catch (error) {
         console.error(`[renderQuestionPerformanceLists] ERROR rendering list ${listId}:`, error);
     }
@@ -2043,19 +2052,19 @@ function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
 
 // 渲染历史成绩图表
 function renderHistoricalScoresChart(historyData) {
-    console.log('[renderHistoricalScoresChart] START. Data:', historyData);
+    // // // // // // // // console.log('[renderHistoricalScoresChart] START. Data:', historyData);
     const ctx = document.getElementById('historicalScoresChart')?.getContext('2d');
      if (!ctx) {
         console.error('[renderHistoricalScoresChart] ERROR: Cannot get context for historicalScoresChart');
         return;
     }
-    console.log('[renderHistoricalScoresChart] Got canvas context.');
+    // // // // // // // // console.log('[renderHistoricalScoresChart] Got canvas context.');
 
     if (!historyData || historyData.length === 0) {
-        console.warn('[renderHistoricalScoresChart] No history data to render.');
+        // // // // // // // // console.warn('[renderHistoricalScoresChart] No history data to render.');
          if (historicalScoresChartInstance) historicalScoresChartInstance.destroy();
          // Optionally display a message on the canvas or in the card
-        console.log('[renderHistoricalScoresChart] END (no data).');
+        // // // // // // // // console.log('[renderHistoricalScoresChart] END (no data).');
         return;
     }
 
@@ -2063,7 +2072,7 @@ function renderHistoricalScoresChart(historyData) {
     const data = historyData.map(record => record.scoreRate || 0);
 
      if (historicalScoresChartInstance) {
-        console.log('[renderHistoricalScoresChart] Destroying previous chart instance.');
+        // // // // // // // // console.log('[renderHistoricalScoresChart] Destroying previous chart instance.');
         historicalScoresChartInstance.destroy();
     }
 
@@ -2100,22 +2109,22 @@ function renderHistoricalScoresChart(historyData) {
                 }
             }
         });
-        console.log('[renderHistoricalScoresChart] New chart instance created.');
+        // // // // // // // // console.log('[renderHistoricalScoresChart] New chart instance created.');
     } catch(error) {
          console.error('[renderHistoricalScoresChart] ERROR creating chart:', error);
     }
-    console.log('[renderHistoricalScoresChart] END.');
+    // // // // // // // // console.log('[renderHistoricalScoresChart] END.');
 }
 
 // 渲染培训建议
 function renderTrainingSuggestions(suggestions, listId) {
-    console.log(`[renderTrainingSuggestions] START. List ID: ${listId}. Data:`, suggestions);
+    // // // // // // // // console.log(`[renderTrainingSuggestions] START. List ID: ${listId}. Data:`, suggestions);
     const listElement = document.getElementById(listId);
     if (!listElement) {
         console.error(`[renderTrainingSuggestions] ERROR: Cannot find list element with ID: ${listId}`);
         return;
     }
-    console.log(`[renderTrainingSuggestions] Found list element:`, listElement);
+    // // // // // // // console.log(`[renderTrainingSuggestions] Found list element:`, listElement);
     listElement.innerHTML = ''; // Clear previous items
 
     if (!suggestions || suggestions.length === 0) {
@@ -2140,9 +2149,9 @@ function renderTrainingSuggestions(suggestions, listId) {
 
             li.innerHTML = `<i class="bi ${iconClass} me-2"></i> ${text}`;
             listElement.appendChild(li);
-             // console.log(`[renderTrainingSuggestions] Appended suggestion ${index + 1} to ${listId}`); // Optional log
+             // // // // // // // // // console.log(`[renderTrainingSuggestions] Appended suggestion ${index + 1} to ${listId}`); // Optional log
         });
-        console.log(`[renderTrainingSuggestions] Successfully rendered ${suggestions.length} suggestions to ${listId}.`);
+        // // // // // // // // // console.log(`[renderTrainingSuggestions] Successfully rendered ${suggestions.length} suggestions to ${listId}.`);
     } catch (error) {
         console.error(`[renderTrainingSuggestions] ERROR rendering list ${listId}:`, error);
     }

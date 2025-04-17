@@ -91,12 +91,12 @@ function createPositionButton(position, text) {
 
 // 新增：更新激活的标签按钮状态 (配合新CSS)
 function updateActiveTab() {
-    console.log(`[Debug] updateActiveTab called. currentPosition = ${currentPosition}`);
+    // console.log(`[Debug] updateActiveTab called. currentPosition = ${currentPosition}`);
     document.querySelectorAll('#positionTabsContainer .position-btn').forEach(btn => {
         const isActive = btn.dataset.position === currentPosition;
-        console.log(`[Debug] Checking button: ${btn.dataset.position}, Is active? ${isActive}`);
+        // console.log(`[Debug] Checking button: ${btn.dataset.position}, Is active? ${isActive}`);
         if (isActive) {
-            btn.classList.add('active'); 
+            btn.classList.add('active');
         } else {
             btn.classList.remove('active');
         }
@@ -106,15 +106,14 @@ function updateActiveTab() {
 // 获取岗位名称
 function getPositionName(position) {
     // 确保处理的是字符串
-    const posTrimmed = String(position || '').trim(); 
-    console.log(`[Debug] getPositionName received: '${position}', trimmed: '${posTrimmed}'`); // 增加日志
+    const posTrimmed = String(position || '').trim();
+    // console.log(`[Debug] getPositionName received: '${position}', trimmed: '${posTrimmed}'`); // 保留这个普通日志用于调试
     switch(posTrimmed) {
         case 'duty_station': return '值班站长';
         case 'station_duty': return '车站值班员';
         case 'station_safety': return '站务安全员';
         case 'all': return '全部岗位';
         default: 
-            console.warn(`[Debug] getPositionName could not match: '${posTrimmed}'`);
             return posTrimmed; // 返回原始代码作为备用
     }
 }
@@ -142,15 +141,15 @@ function updateAndSaveJobPositions() {
 // 加载题目列表和岗位标签
 function loadQuestions() {
     const questionBankStr = localStorage.getItem('questionBank');
-    console.log("[Debug] Raw questionBank from localStorage:", questionBankStr);
+    // console.log("[Debug] Raw questionBank from localStorage:", questionBankStr);
     const questionBank = JSON.parse(questionBankStr || '[]');
-    console.log("[Debug] Parsed questionBank:", JSON.parse(JSON.stringify(questionBank))); // Log deep copy
+    // console.log("[Debug] Parsed questionBank:", JSON.parse(JSON.stringify(questionBank))); // Log deep copy
     
     // 提取所有不重复的岗位
     const positionsSet = new Set();
     questionBank.forEach(q => {
         // **** 增加日志：检查每个题目的 position ****
-        console.log(`[Debug] Checking question ID ${q.id}, position:`, q.position);
+        // console.log(`[Debug] Checking question ID ${q.id}, position:`, q.position);
         if (q.position && Array.isArray(q.position)) {
             q.position.forEach(p => {
                 if (p && typeof p === 'string') { // **** 确保添加的是非空字符串 ****
@@ -164,7 +163,7 @@ function loadQuestions() {
     positionsSet.delete('all'); 
     // **** 过滤掉可能的无效值 ****
     allPositions = Array.from(positionsSet).filter(p => p).sort(); 
-    console.log("[Debug] Extracted, filtered, and sorted allPositions:", allPositions);
+    // console.log("[Debug] Extracted, filtered, and sorted allPositions:", allPositions);
     
     // **** 首次加载时也更新一次 jobPositions ****
     updateAndSaveJobPositions();
@@ -179,11 +178,11 @@ function loadQuestions() {
 // 新增：动态加载岗位标签按钮
 function loadPositionTabs() {
     const container = document.getElementById('positionTabsContainer');
-    console.log("[Debug] loadPositionTabs: Container found?", !!container);
+    // console.log("[Debug] loadPositionTabs: Container found?", !!container);
     if (!container) return;
     container.innerHTML = ''; 
 
-    console.log("[Debug] loadPositionTabs: Generating tabs for positions:", allPositions);
+    // console.log("[Debug] loadPositionTabs: Generating tabs for positions:", allPositions);
     if (allPositions.length === 0) {
         container.innerHTML = '<p class="text-muted">暂无按岗位分类的题库。</p>';
         return;
@@ -192,30 +191,30 @@ function loadPositionTabs() {
     // 为每个实际岗位创建按钮
     allPositions.forEach(position => {
         // **** 添加日志：检查 position 和 getPositionName ****
-        console.log(`[Debug] Creating button for position code: ${position}`);
+        // console.log(`[Debug] Creating button for position code: ${position}`);
         const positionName = getPositionName(position);
-        console.log(`[Debug] getPositionName returned: ${positionName}`);
+        // console.log(`[Debug] getPositionName returned: ${positionName}`);
         const btnText = positionName ? positionName + '题库' : '未知岗位题库'; // 添加备用文本
         const btn = createPositionButton(position, btnText);
         container.appendChild(btn);
     });
     
-    console.log("[Debug] loadPositionTabs: Finished appending buttons. Updating active tab...");
+    // console.log("[Debug] loadPositionTabs: Finished appending buttons. Updating active tab...");
     updateActiveTab();
 }
 
 // 根据岗位筛选题目
 function filterByPosition(position) {
     currentPosition = position;
-    console.log(`[Debug] filterByPosition called with: ${position}. currentPosition set.`); // 增加日志
+    // console.log(`[Debug] filterByPosition called with: ${position}. currentPosition set.`); // 增加日志
     const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
     
     // **** 增加日志：检查筛选前的题库 ****
-    console.log(`[Debug] Filtering from ${questionBank.length} total questions.`);
+    // console.log(`[Debug] Filtering from ${questionBank.length} total questions.`);
 
     if (position === 'all') { // 'all' 逻辑现在应该由 displayPositionTabs 处理，这里暂时保留
         filteredQuestions = questionBank;
-        console.log(`[Debug] Position is 'all', filteredQuestions count: ${filteredQuestions.length}`);
+        // console.log(`[Debug] Position is 'all', filteredQuestions count: ${filteredQuestions.length}`);
     } else {
         filteredQuestions = questionBank.filter(question => {
             const hasPosition = question.position && 
@@ -227,7 +226,7 @@ function filterByPosition(position) {
             // console.log(`[Debug] Question ID ${question.id}, Position: ${question.position}, Has Position for '${position}'? ${hasPosition}`);
             return hasPosition;
         });
-        console.log(`[Debug] Position is '${position}', filteredQuestions count: ${filteredQuestions.length}`);
+        // console.log(`[Debug] Position is '${position}', filteredQuestions count: ${filteredQuestions.length}`);
     }
     
     currentPage = 1; // 重置页码
@@ -245,7 +244,7 @@ function filterByPosition(position) {
    
     // **** 添加正确的状态更新调用 ****
     updateActiveTab(); 
-    console.log(`[Debug] filterByPosition finished, updateActiveTab called.`);
+    // console.log(`[Debug] filterByPosition finished, updateActiveTab called.`);
 }
 
 // 显示题目列表 (修改以支持分页)
@@ -304,7 +303,7 @@ function displayQuestions() {
 // 创建题目卡片 (修改序号参数)
 function createQuestionCard(question, displayIndex) { // 参数改为 displayIndex
     // **** 添加日志 ****
-    console.log(`[createQuestionCard] Creating card for question (displayIndex ${displayIndex}):`, JSON.parse(JSON.stringify(question)));
+    // console.log(`[createQuestionCard] Creating card for question (displayIndex ${displayIndex}):`, JSON.parse(JSON.stringify(question)));
 
     const card = document.createElement('div');
     card.className = 'question-card p-3 mb-3';
@@ -664,14 +663,45 @@ function processImport() {
                 const type = typeText === '随机题' ? 'random' : 'required';
                 const positions = positionText ? positionText.split(/,|，|;|；|\s+/).map(p => p.trim()).filter(p => p) : [];
                 
-                // **** 确保调用 getPositionCode ****
-                const positionCodes = positions.map(p => getPositionCode(p)).filter(p => p !== null); 
-                
-                if (positionCodes.length === 0 && positionText.trim() !== '') {
-                     errors.push(`第 ${i + 1} 行的岗位名称无法识别: ${positionText}，已跳过该题岗位设置。`);
-                } else if (positionCodes.length === 0 && positionText.trim() === '') {
-                    console.log(`第 ${i+1} 行未指定岗位，将不设置岗位信息。`);
+                // **** START: New position processing logic ****
+                let processedPositionCodes = [];
+                let unrecognizedPositions = []; // 用于记录未被明确映射的原始岗位名
+
+                positions.forEach(p => {
+                    let code;
+                    const trimmedP = p.trim();
+                    switch(trimmedP) { // 尝试映射已知的中文名
+                        case '值班站长': code = 'duty_station'; break;
+                        case '车站值班员': code = 'station_duty'; break;
+                        case '站务安全员': code = 'station_safety'; break;
+                        case '全部岗位': code = 'all'; break;
+                        default:
+                            // 如果已经是已知代码或 'all'，直接使用
+                            if (['duty_station', 'station_duty', 'station_safety', 'all'].includes(trimmedP)) {
+                                 code = trimmedP;
+                            } else {
+                                 // 对于未知岗位，使用其本身（进行标准化处理）作为代码
+                                 // 转小写，替换空格为下划线
+                                 code = trimmedP.toLowerCase().replace(/\s+/g, '_');
+                                 if (code) { // 确保处理后不是空字符串
+                                    unrecognizedPositions.push(p); // 记录原始名称以供反馈
+                                 } else {
+                                    code = undefined; // 如果处理后为空，则忽略
+                                 }
+                            }
+                    }
+                    if (code && !processedPositionCodes.includes(code)) { // 避免重复添加
+                        processedPositionCodes.push(code);
+                    }
+                });
+
+                // Report unrecognized positions - Comment out this section to remove the alert message
+                /*
+                if (unrecognizedPositions.length > 0) {
+                     errors.push(`第 ${i + 1} 行发现新的或无法精确映射的岗位: "${unrecognizedPositions.join(', ')}"。已尝试使用标准化后的名称作为代码。`);
                 }
+                */
+                // **** END: New position processing logic ****
 
                 maxId++;
                 const newQuestion = {
@@ -680,7 +710,7 @@ function processImport() {
                     standardAnswer: standardAnswer,
                     type: type,
                     standardScore: standardScore,
-                    position: positionCodes.length > 0 ? positionCodes : undefined,
+                    position: processedPositionCodes.length > 0 ? processedPositionCodes : undefined,
                     section: section,
                     knowledgeSource: knowledgeSource || undefined // 存储知识点来源，为空则存 undefined
                 };

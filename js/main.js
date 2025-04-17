@@ -161,7 +161,8 @@ function updateAndSaveJobPositions() {
             }
         });
         localStorage.setItem('jobPositions', JSON.stringify(positionMap));
-        console.log("Main.js: Updated and saved jobPositions to localStorage:", positionMap);
+        // Comment out frequent log
+        // console.log("Main.js: Updated and saved jobPositions to localStorage:", positionMap);
     } catch (error) {
          console.error("Main.js: Error updating jobPositions:", error);
     }

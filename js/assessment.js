@@ -42,7 +42,6 @@ document.addEventListener('DOMContentLoaded', function() {
         userAnswers = currentAssessmentData.answers;
         // **** 确保加载累计的活动时间 ****
         currentAssessmentData.totalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0; // 确保该字段存在并初始化
-        console.log(`[Resume Debug] Loaded totalActiveSeconds from currentAssessment: ${currentAssessmentData.totalActiveSeconds}`); // 添加日志
         
         // **** 调用 displayUserInfo 显示信息 ****
         displayUserInfo(currentAssessmentData.userInfo);
@@ -52,10 +51,8 @@ document.addEventListener('DOMContentLoaded', function() {
         document.getElementById('assessmentArea').classList.remove('d-none');
 
         // 恢复计时器状态 (显示总流逝时间)
-        const assessmentStartTime = new Date(currentAssessmentData.startTime); 
-        console.log(`[Resume Debug] Loaded startTime: ${currentAssessmentData.startTime}, Parsed as: ${assessmentStartTime}`); // 添加日志
+        const assessmentStartTime = new Date(currentAssessmentData.startTime);
         const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0; // 这是总流逝时间
-        console.log(`[Resume Debug] Loaded elapsedSeconds: ${elapsedSeconds}`); // 添加日志
         startTimer(assessmentStartTime, elapsedSeconds); 
 
         // 生成导航并显示当前题目
@@ -191,7 +188,7 @@ function loadSections() {
 
     const sectionCards = document.getElementById('sectionCards');
     sectionCards.innerHTML = '';
-    selectedSections.clear();
+    selectedSections.clear(); // 清空之前选择的随机题数量
 
     // 获取该岗位的题目
     const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
@@ -199,27 +196,60 @@ function loadSections() {
         q.position && (q.position.includes(position) || q.position.includes('all'))
     );
 
-    // 统计各模块的选答题数量
-    const sectionCounts = {};
-    positionQuestions.forEach(q => {
-        if (q.section && q.type === 'random') { // 只统计选答题
-            sectionCounts[q.section] = (sectionCounts[q.section] || 0) + 1;
+    // **** START: New section details aggregation ****
+    const sectionDetails = {};
+    const sectionOrder = {};
+    positionQuestions.forEach((q, index) => {
+        const sectionName = q.section || '未分类'; // Use '未分类' for questions without a section
+        if (!(sectionName in sectionOrder)) {
+            sectionOrder[sectionName] = index;
+        }
+        if (!sectionDetails[sectionName]) {
+            sectionDetails[sectionName] = { requiredCount: 0, randomCount: 0 };
+        }
+        if (q.type === 'required') {
+            sectionDetails[sectionName].requiredCount++;
+        } else if (q.type === 'random') {
+            sectionDetails[sectionName].randomCount++;
         }
     });
+    // **** END: New section details aggregation ****
 
-    // 如果没有选答题模块，则直接启用开始按钮（只考必答题）
-    if (Object.keys(sectionCounts).length === 0) {
-        sectionSelectionDiv.classList.add('d-none');
-        startBtn.disabled = false;
-        if (startBtnHint) startBtnHint.textContent = '开始测评 (仅必答题)';
+    // 如果没有板块，隐藏选择区域
+    const sectionEntries = Object.entries(sectionDetails);
+    if (sectionEntries.length === 0) {
+        sectionSelectionDiv.classList.add('d-none'); // Hide if no sections at all
+        if (startBtnHint) startBtnHint.textContent = '开始测评 (无板块题目)';
+        updateStartButton(); // Update button state
         return;
     }
 
-    // 创建模块卡片
-    Object.entries(sectionCounts).forEach(([section, count]) => {
+    // **** 新增：排序板块，将只有必答题的放到最后 ****
+    sectionEntries.sort(([sectionA, detailsA], [sectionB, detailsB]) => { 
+        const hasRandomA = detailsA.randomCount > 0;
+        const hasRandomB = detailsB.randomCount > 0;
+
+        // 1. 只有必答题的板块排在最后
+        if (hasRandomA && !hasRandomB) {
+            return -1; // A (有随机) 排在 B (无随机) 前面
+        }
+        if (!hasRandomA && hasRandomB) {
+            return 1; // B (有随机) 排在 A (无随机) 后面
+        }
+
+        // 2. 如果都有随机题 或 都只有必答题，则按题库原始顺序排序
+        const orderA = sectionOrder[sectionA];
+        const orderB = sectionOrder[sectionB];
+        return orderA - orderB; 
+    });
+
+    // **** 遍历排序后的板块 ****
+    sectionEntries.forEach(([section, details]) => {
+        const { requiredCount, randomCount } = details;
         const card = document.createElement('div');
-        card.className = 'col-md-4 mb-3';
+        card.className = 'col-md-4 mb-3'; // Use Bootstrap grid
         const inputId = `section-count-${section.replace(/\s+/g, '-')}`;
+        const isDisabled = randomCount === 0; // Disable input if no random questions
 
         // 定义模块图标映射
         const sectionIcons = {
@@ -230,39 +260,39 @@ function loadSections() {
             "客运服务": "bi-people",
             "安全生产": "bi-shield-check",
             "规章制度": "bi-journal-bookmark-fill",
-            // 可以继续添加其他模块及其对应的 Bootstrap Icon 类名
             "默认": "bi-grid" // 默认图标
         };
-
         const iconClass = sectionIcons[section] || sectionIcons["默认"];
 
         card.innerHTML = `
-            <div class="card h-100 module-card">
+            <div class="card h-100 module-card ${isDisabled ? 'bg-light' : ''}">
                 <div class="card-body">
                     <h6 class="card-title d-flex align-items-center">
                         <i class="bi ${iconClass} me-2"></i>
                         ${section}
                     </h6>
-                    <p class="card-text small text-muted mb-2">可选选答题数量: ${count}</p>
-                    <div class="input-group input-group-sm">
-                        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', -1, ${count})">-</button>
-                        <input type="number" class="form-control section-count-input"
-                               id="${inputId}"
-                               data-section="${section}"
-                               min="0" max="${count}"
-                               value="0" 
-                               oninput="updateSelectedSection(this)">
-                        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', 1, ${count})">+</button>
+                    <p class="card-text small text-muted mb-1">必答题数量: ${requiredCount}</p>
+                    <p class="card-text small ${isDisabled ? 'text-secondary' : 'text-muted'} mb-2">可选随机题数量: ${randomCount}</p>
+                    <div class="input-group input-group-sm ${isDisabled ? 'd-none' : ''}"> 
+                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', -1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>-</button>
+                         <input type="number" class="form-control section-count-input"
+                                id="${inputId}"
+                                data-section="${section}"
+                                min="0" max="${randomCount}"
+                                value="0"
+                                oninput="updateSelectedSection(this)"
+                                ${isDisabled ? 'disabled' : ''}>
+                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', 1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>+</button>
                     </div>
+                    ${isDisabled ? '<p class="text-muted small mt-2">(无可选随机题)</p>' : ''}
                 </div>
             </div>
         `;
         sectionCards.appendChild(card);
     });
 
-    sectionSelectionDiv.classList.remove('d-none');
-    startBtn.disabled = false;
-    updateStartButton();
+    sectionSelectionDiv.classList.remove('d-none'); // Show the section area
+    updateStartButton(); // Update button state based on position selection
 }
 
 // 新增: 用于增减按钮的函数
@@ -308,7 +338,7 @@ function updateSelectedSection(inputElement) {
     }
 
     selectedSections.set(section, finalCount);
-    console.log("Selected sections updated:", selectedSections);
+    // console.log("Selected sections updated:", selectedSections);
 
     // 更新开始按钮状态
     updateStartButton();
@@ -321,13 +351,8 @@ function updateStartButton() {
     const hasSelectedQuestions = Array.from(selectedSections.values()).some(count => count > 0);
     const positionValue = document.getElementById('position').value;
 
-    // **** 添加日志 ****
-    console.log(`[updateStartButton] Position value: '${positionValue}', Has selected random questions: ${hasSelectedQuestions}`);
-
     if (startBtn) {
-        // **** 修改逻辑：按钮是否禁用只取决于是否选择了岗位 ****
         startBtn.disabled = !positionValue;
-        console.log(`[updateStartButton] Setting startBtn.disabled to: ${!positionValue}`); // **** 添加日志 ****
     }
 
     if (startBtnHint) {
@@ -362,7 +387,7 @@ function displayUserInfo(userData) {
 // 开始测评
 function startAssessment() {
     // **** 添加日志 ****
-    console.log("[startAssessment] Function called.");
+    // console.log("[startAssessment] Function called.");
 
     const name = document.getElementById('name').value;
     const employeeId = document.getElementById('employeeId').value;
@@ -389,7 +414,7 @@ function startAssessment() {
     );
 
     // **** 添加日志 ****
-    console.log(`[startAssessment] Found ${positionQuestions.length} questions for position '${position}'.`);
+    // console.log(`[startAssessment] Found ${positionQuestions.length} questions for position '${position}'.`);
 
     // 1. 筛选出所有必答题
     const requiredQuestions = positionQuestions.filter(q => q.type === 'required');
@@ -410,7 +435,7 @@ function startAssessment() {
     const finalSelectedQuestions = [...requiredQuestions, ...randomSelectedQuestions];
     
     // **** 添加日志 ****
-    console.log(`[startAssessment] Total required: ${requiredQuestions.length}, Total random selected: ${randomSelectedQuestions.length}, Final selected: ${finalSelectedQuestions.length}`);
+    // console.log(`[startAssessment] Total required: ${requiredQuestions.length}, Total random selected: ${randomSelectedQuestions.length}, Final selected: ${finalSelectedQuestions.length}`);
     
     // 如果最终没有题目（例如只有选答题模块但用户没选），则提示
     if (finalSelectedQuestions.length === 0) {
@@ -457,7 +482,7 @@ function startAssessment() {
     localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData)); // 保存初始状态
     
     // **** 添加日志 ****
-    console.log("[startAssessment] Hiding user info form, showing assessment area.");
+    // console.log("[startAssessment] Hiding user info form, showing assessment area.");
     // 显示测评区域
     document.getElementById('userInfoForm').classList.add('d-none');
     document.getElementById('assessmentArea').classList.remove('d-none');
@@ -474,7 +499,7 @@ function startAssessment() {
     displayUserInfo(currentAssessmentData.userInfo);
 
     // **** 添加日志 ****
-    console.log("[startAssessment] Calling displayCurrentQuestion for the first time.");
+    // console.log("[startAssessment] Calling displayCurrentQuestion for the first time.");
     // 显示第一题
     displayCurrentQuestion(); 
 }
@@ -488,12 +513,12 @@ function getRandomQuestions(questions, count) {
 // 更新显示题目
 function displayCurrentQuestion() {
     // **** 添加详细日志 ****
-    console.log("[displayCurrentQuestion] Function called for index:", currentQuestionIndex);
+    // console.log("[displayCurrentQuestion] Function called for index:", currentQuestionIndex);
     if (currentQuestionIndex < 0 || currentQuestionIndex >= currentQuestions.length) {
         console.error("[displayCurrentQuestion] Invalid question index:", currentQuestionIndex);
         return; 
     }
-    console.log("[displayCurrentQuestion] Current question data:", JSON.parse(JSON.stringify(currentQuestions[currentQuestionIndex])));
+    // console.log("[displayCurrentQuestion] Current question data:", JSON.parse(JSON.stringify(currentQuestions[currentQuestionIndex])));
 
     const question = currentQuestions[currentQuestionIndex];
     // 使用 HTML 中实际存在的 ID
@@ -504,22 +529,13 @@ function displayCurrentQuestion() {
     const commentInputElement = document.getElementById('commentInput');
     const standardScoreDisplayElement = document.getElementById('standardScoreDisplay'); // Get score display element
     
-    // **** 添加元素存在性检查日志 ****
-    console.log("[displayCurrentQuestion] Checking elements:");
-    console.log("  progressElement:", progressElement ? 'Exists' : 'MISSING!');
-    console.log("  questionContentElement:", questionContentElement ? 'Exists' : 'MISSING!');
-    console.log("  standardAnswerElement:", standardAnswerElement ? 'Exists' : 'MISSING!');
-    console.log("  scoreInputElement:", scoreInputElement ? 'Exists' : 'MISSING!');
-    console.log("  commentInputElement:", commentInputElement ? 'Exists' : 'MISSING!');
-    console.log("  standardScoreDisplayElement:", standardScoreDisplayElement ? 'Exists' : 'MISSING!');
-    
     // 更新检查，只检查核心元素
     if (!progressElement || !questionContentElement || !standardAnswerElement || !scoreInputElement || !commentInputElement || !standardScoreDisplayElement) {
         console.error("[displayCurrentQuestion] Assessment UI elements (progress, content, score display, score input, comment) are missing or have incorrect IDs in assessment.html.");
         // 可以在这里停止执行或采取其他措施，防止后续代码出错
         return; 
     }
-    console.log("[displayCurrentQuestion] All required elements found. Proceeding to update UI.");
+    // console.log("[displayCurrentQuestion] All required elements found. Proceeding to update UI.");
 
     // 更新进度显示格式
     progressElement.textContent = `第 ${currentQuestionIndex + 1} 题 (共 ${currentQuestions.length} 题)`; 
@@ -640,12 +656,7 @@ function recordPreviousQuestionTime() {
              const durationSeconds = Math.round((endTime - startTime) / 1000);
              answer.duration = (answer.duration || 0) + durationSeconds; // Accumulate duration if returning to question
              answer.startTime = null; // Reset start time after recording duration
-             console.log(`Recorded duration for Q${previousQuestionId}: ${durationSeconds}s, Total: ${answer.duration}s`);
-         } else {
-             console.log(`Could not record time for Q${previousQuestionId}: missing answer or startTime`);
          }
-     } else {
-         console.log("recordPreviousQuestionTime: Invalid currentQuestionIndex", currentQuestionIndex);
      }
 }
 
@@ -698,8 +709,6 @@ function updateProgressAndStatus() {
     document.getElementById('totalQuestions').textContent = totalQuestions;
     document.getElementById('answeredQuestions').textContent = answeredCount;
     document.getElementById('unansweredQuestions').textContent = unansweredCount;
-    
-    console.log(`Progress Updated: Answered=${answeredCount}, Unanswered=${unansweredCount}`);
 }
 
 // **** 修改：更新题目导航按钮样式 ****
@@ -738,7 +747,6 @@ function updateQuestionNavigation() {
 function updateSubmitButton() {
     const submitBtn = document.getElementById('submitBtn');
     if (!submitBtn || !currentAssessmentData || !currentAssessmentData.answers) {
-        console.log("updateSubmitButton: 无法更新，按钮或数据不存在");
         return;
     }
     
@@ -748,9 +756,6 @@ function updateSubmitButton() {
         return answer && answer.score !== null && !isNaN(answer.score);
     });
     
-    console.log("检查所有题目是否已评分:", allAnswered);
-    console.log("当前答案状态:", JSON.parse(JSON.stringify(currentAssessmentData.answers))); // 深拷贝打印
-
     submitBtn.disabled = !allAnswered;
     
     // 如果所有题目已评分，可以添加视觉提示
@@ -813,7 +818,6 @@ function submitAssessment() {
 
     // **** 添加日志：检查恢复后的初始活动时间 ****
     const initialTotalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0;
-    console.log(`[Submit Debug] Initial totalActiveSeconds from currentAssessmentData: ${initialTotalActiveSeconds}`);
 
     // **** 计算最后活动会话时长 ****
     let finalSessionDurationSeconds = 0;
@@ -827,14 +831,8 @@ function submitAssessment() {
     // **** 在计算完会话时长后，再停止计时器 ****
     stopTimer(); 
 
-    // **** 添加日志：检查本次会话计算 ****
-    console.log(`[Submit Debug] currentSessionStartTime: ${sessionStartTime ? sessionStartTime.toISOString() : 'null'}, assessmentEndTime: ${assessmentEndTime.toISOString()}, calculated finalSessionDurationSeconds: ${finalSessionDurationSeconds}`);
-
     // **** 计算总活动时长 ****
     let totalActiveSeconds = initialTotalActiveSeconds + finalSessionDurationSeconds;
-
-     // **** 添加日志：检查最终总时间 ****
-     console.log(`[Submit Debug] Final calculated totalActiveSeconds: ${totalActiveSeconds} (initial: ${initialTotalActiveSeconds} + final session: ${finalSessionDurationSeconds})`);
 
     // 更新 currentAssessmentData
     currentAssessmentData.answers = userAnswers;
@@ -845,9 +843,6 @@ function submitAssessment() {
     currentAssessmentData.status = 'completed';
     currentAssessmentData.timestamp = assessmentEndTime.toISOString();
     currentAssessmentData.totalActiveSeconds = totalActiveSeconds; // 保存最终的总活动秒数
-
-    // **** 添加日志：检查要保存的分钟数 ****
-    console.log(`[Submit Debug] Duration to be saved (rounded minutes): ${currentAssessmentData.duration}`);
 
     // **** 新增：计算得分率 ****
     const scoreRate = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
@@ -882,7 +877,7 @@ function submitAssessment() {
     };
     
     // **** 添加日志：检查要保存的记录 ****
-    console.log("[Submit Debug] Final historyRecord to be saved:", JSON.parse(JSON.stringify(historyRecord)));
+    // console.log("[Submit Debug] Final historyRecord to be saved:", JSON.parse(JSON.stringify(historyRecord)));
 
     // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
     const historyWithoutPaused = history.filter(item => !(item.id === historyRecord.id && item.status === 'paused'));
@@ -890,10 +885,7 @@ function submitAssessment() {
     localStorage.setItem('assessmentHistory', JSON.stringify(historyWithoutPaused));
 
     localStorage.removeItem('currentAssessment');
-    console.log("Assessment submitted and saved to history. Redirecting...");
-
-    // **** 在跳转前暂停执行以查看日志 ****
-    debugger; 
+    // console.log("Assessment submitted and saved to history. Redirecting...");
 
     window.location.href = `result.html?assessmentId=${currentAssessmentData.id}`;
 }
@@ -961,16 +953,14 @@ function pauseAssessment() {
     const existingIndex = history.findIndex(item => item.id === historyRecord.id);
     if (existingIndex > -1) {
         history[existingIndex] = historyRecord; // Update existing paused record
-        console.log(`Updated paused assessment with ID: ${historyRecord.id} in history.`);
     } else {
         history.push(historyRecord); // Add as new paused record
-        console.log(`Saved new paused assessment with ID: ${historyRecord.id} to history.`);
     }
     localStorage.setItem('assessmentHistory', JSON.stringify(history));
 
     // 5. 清除当前测评状态并重定向
     localStorage.removeItem('currentAssessment');
-    console.log("Assessment paused and saved to history. Redirecting...");
+    // console.log("Assessment paused and saved to history. Redirecting...");
     alert("测评已暂存！"); // Inform user
     window.location.href = 'history.html'; // Redirect to history page
 }

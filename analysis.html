@@ -73,6 +73,12 @@
         .nav-tabs .nav-link {
             font-weight: 500;
         }
+        .history-action-btn {
+            padding: 0.35rem 0.85rem; /* Adjust padding for better touch */
+            /* Add any other styles like border-radius if needed */
+            border-radius: 100px; 
+            margin-left: 5px; /* Keep existing margin if desired */
+        }
     </style>
 </head>
 <body>
@@ -116,9 +122,9 @@
                  <div class="purple-accent-line"></div>
              </div>
              <!-- **** 修改：分类的导出/导入按钮 **** -->
-             <div class="d-flex align-items-center">
+             <div class="d-flex align-items-center flex-wrap gap-2">
                 <!-- 导出按钮组 -->
-                <div class="btn-group me-2" role="group" aria-label="Export options">
+                <div class="btn-group" role="group" aria-label="Export options">
                     <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="bi bi-download me-1"></i>导出数据
                     </button>
@@ -129,7 +135,7 @@
                     </ul>
                 </div>
                 <!-- 导入按钮 -->
-                <button id="importDataBtn" class="btn btn-outline-secondary me-2"><i class="bi bi-upload me-1"></i>导入数据</button>
+                <button id="importDataBtn" class="btn btn-outline-secondary"><i class="bi bi-upload me-1"></i>导入数据</button>
                 <input type="file" id="importFileInput" accept=".json" style="display: none;">
                 <!-- 返回首页按钮 -->
                 <button class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
@@ -157,14 +163,14 @@
                 <!-- Position Analysis Filters -->
                 <div class="filter-container">
                     <div class="row mb-0 align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-4 mb-3 mb-md-0">
                             <label for="positionSelect" class="form-label"><i class="bi bi-filter me-1"></i>选择岗位</label>
                             <select class="form-select" id="positionSelect" onchange="loadPositionAnalysis()">
                                 <option value="all">全部岗位</option>
                                 <!-- Options loaded dynamically -->
                             </select>
                         </div>
-                         <div class="col-md-4">
+                         <div class="col-md-4 mb-3 mb-md-0">
                             <label for="positionStartDate" class="form-label"><i class="bi bi-calendar-range me-1"></i>开始日期</label>
                             <input type="date" class="form-select" id="positionStartDate" value="" onchange="loadPositionAnalysis()">
                         </div>
@@ -239,14 +245,14 @@
                 <!-- Individual Analysis Filters -->
                 <div class="filter-container">
                     <div class="row mb-0 align-items-end">
-                        <div class="col-md-4">
+                        <div class="col-md-4 mb-3 mb-md-0">
                             <label for="employeePosition" class="form-label"><i class="bi bi-briefcase me-1"></i>按岗位筛选</label>
                             <select class="form-select" id="employeePosition" onchange="filterEmployeesByPosition()">
                                 <option value="all">全部岗位</option>
                                 <!-- Options will be loaded by JS -->
                             </select>
                          </div>
-                         <div class="col-md-4">
+                         <div class="col-md-4 mb-3 mb-md-0">
                             <label for="employeeSelect" class="form-label"><i class="bi bi-person me-1"></i>选择员工</label>
                             <select class="form-select" id="employeeSelect" onchange="loadEmployeeAssessments()">
                                 <option value="">-- 请选择员工 --</option>
