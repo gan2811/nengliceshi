@@ -284,7 +284,7 @@ function loadSections() {
                                 ${isDisabled ? 'disabled' : ''}>
                          <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', 1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>+</button>
                     </div>
-                    ${isDisabled ? '<p class="text-muted small mt-2">(无可选随机题)</p>' : ''}
+                    ${isDisabled ? '<p class="text-center text-danger small mt-2">(无可选随机题)</p>' : ''}
                 </div>
             </div>
         `;
