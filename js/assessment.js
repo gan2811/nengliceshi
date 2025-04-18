@@ -1041,4 +1041,56 @@ function showQuestion(index) {
 
     currentQuestionIndex = index;
     displayCurrentQuestion();
+}
+
+// **** 新增：在页面隐藏/离开时自动保存进行中的测评状态 ****
+window.addEventListener('pagehide', function(event) {
+    // 检查是否有正在进行的测评数据，并且状态是 'in_progress'
+    if (currentAssessmentData && currentAssessmentData.status === 'in_progress') {
+        console.log('[pagehide] Detected active assessment. Saving state...');
+
+        // 1. 保存当前题目的答案和评论 (允许未评分)
+        saveCurrentAnswer(true); 
+        // 2. 记录当前题目的用时 (如果需要精确累计)
+        recordPreviousQuestionTime(); 
+
+        // 3. 更新 currentAssessmentData 中的关键状态
+        currentAssessmentData.currentQuestionIndex = currentQuestionIndex;
+
+        // 4. 计算并更新时间
+        // 停止计时器以获取当前会话时间 (如果正在运行)
+        let currentSessionDurationSeconds = 0;
+        if (currentSessionStartTime) {
+            currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
+        }
+        // 累加总活动时间
+        currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
+
+        // 计算总流逝时间 (从开始到此刻)
+        let elapsedSeconds = 0;
+        if (currentAssessmentData.startTime) {
+            const startTime = new Date(currentAssessmentData.startTime);
+            const now = new Date();
+            elapsedSeconds = Math.floor((now - startTime) / 1000);
+        }
+        currentAssessmentData.elapsedSeconds = elapsedSeconds;
+
+        // 5. 将更新后的数据保存到 localStorage
+        try {
+            localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData));
+            console.log('[pagehide] Assessment state saved to localStorage.');
+        } catch (e) {
+            console.error('[pagehide] Error saving assessment state to localStorage:', e);
+        }
+        // 注意：这里不需要停止计时器或清除 currentSessionStartTime，因为页面即将卸载
+    } else {
+        console.log('[pagehide] No active assessment found or status is not in_progress. No state saved.');
+    }
+});
+// **** 自动保存逻辑结束 ****
+
+// 获取随机题目
+function getRandomQuestions(questions, count) {
+    const shuffled = [...questions].sort(() => 0.5 - Math.random());
+    return shuffled.slice(0, count);
 } 
