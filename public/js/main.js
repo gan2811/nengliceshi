@@ -1,7 +1,7 @@
 console.log("--- js/main.js script started ---"); // 新增日志：确认脚本开始执行
 
 // LeanCloud SDK Initialization
-const APP_ID = 'WL96U3J6bC9A7nDWV7l9Y1O9-gzGzoHsz';
+const APP_ID = 'WL96U3J6p1jX1Jpj1EiuLKJG-gzGzoHsz'; // <-- 使用截图确认的正确 App ID
 const APP_KEY = 'YvkBWa4EkM28Wa8QfmlXiCFa'; // <-- 取消注释，并确保这里是正确的 App Key
 // **[修改]** 对于中国区应用，必须提供 Server URL
 // 请在 LeanCloud 控制台 -> 设置 -> 应用凭证 -> API 访问域名 确认此地址

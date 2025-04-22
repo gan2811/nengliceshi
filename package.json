@@ -1,0 +1,17 @@
+{
+  "name": "my-leancloud-app",
+  "version": "1.0.0",
+  "description": "LeanCloud Cloud Engine application",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "leanengine": "^3.0.0",
+    "express": "^4.17.1",
+    "leancloud-storage": "^4.0.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+} 
