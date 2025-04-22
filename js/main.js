@@ -1,3 +1,21 @@
+// LeanCloud SDK Initialization
+const APP_ID = 'WL96U3J6bC9A7nDWV7l9Y1O9-gzGzoHsz';
+// const APP_KEY = '替换为你的 App Key'; // 不再需要 App Key
+// **[修改]** 对于中国区应用，必须提供 Server URL
+// 请在 LeanCloud 控制台 -> 设置 -> 应用凭证 -> API 访问域名 确认此地址
+const SERVER_URL = 'https://wl96u3j6.lc-cn-n1-shared.com'; // **[修改]** 使用截图确认的地址
+
+try {
+  AV.init({
+    appId: APP_ID,
+    // appKey: APP_KEY, // <-- 注释掉这一行
+    serverURL: SERVER_URL // **[修改]** 取消注释并设置 serverURL
+  });
+  console.log("LeanCloud SDK Initialized Successfully with Server URL."); // 确认初始化成功
+} catch (error) {
+   console.error("LeanCloud SDK Initialization Failed:", error); // 报告初始化错误
+}
+
 // 全局变量
 let currentUserInfo = {
     name: '',
@@ -169,3 +187,71 @@ function updateAndSaveJobPositions() {
 }
 
 // **** 结束新增辅助函数 **** 
+
+// 全局 Helper 函数：格式化日期 (如果其他 JS 文件需要它)
+function formatDate(dateString, includeTime = false) {
+    // ... (函数体保持不变)
+    if (!dateString) return 'N/A';
+    try {
+        const date = new Date(dateString);
+        const year = date.getFullYear();
+        const month = (date.getMonth() + 1).toString().padStart(2, '0');
+        const day = date.getDate().toString().padStart(2, '0');
+        
+        if (includeTime) {
+            const hours = date.getHours().toString().padStart(2, '0');
+            const minutes = date.getMinutes().toString().padStart(2, '0');
+            const seconds = date.getSeconds().toString().padStart(2, '0');
+            return `${year}${month}${day}_${hours}${minutes}${seconds}`; // 用于文件名的格式
+        } else {
+            return `${year}-${month}-${day}`; // 用于显示的格式
+        }
+    } catch (e) {
+        console.error("日期格式化错误:", e);
+        return dateString; // Fallback
+    }
+}
+
+// 全局 Helper 函数：获取车站名称 (如果其他 JS 文件需要它)
+function getStationName(code) {
+    // ... (函数体保持不变)
+    const stationMap = {
+        'grand_hall': '大礼堂',
+        'seven_hills': '七星岗',
+        'houbao': '后堡',
+        'wanshou': '万寿路',
+        'nanhu': '南湖',
+        'lanhua': '兰花路'
+    };
+    return stationMap[code] || code || '未知';
+}
+
+// // 示例：检查本地题库版本，如果需要则从服务器更新 (可选功能)
+// function checkAndUpdateQuestionBank() {
+//     const localVersion = localStorage.getItem('questionBankVersion');
+//     // 假设我们从服务器某处获取最新版本号
+//     fetch('/api/question-bank-version') // 这是一个示例 URL
+//         .then(response => response.json())
+//         .then(serverData => {
+//             if (!localVersion || localVersion < serverData.version) {
+//                 console.log('题库有更新，正在下载...');
+//                 fetch('/api/question-bank') // 示例 URL
+//                     .then(response => response.json())
+//                     .then(questions => {
+//                         localStorage.setItem('questionBank', JSON.stringify(questions));
+//                         localStorage.setItem('questionBankVersion', serverData.version);
+//                         console.log('题库更新完成。');
+//                         // 可能需要通知用户或重新加载依赖题库的页面部分
+//                     })
+//                     .catch(error => console.error('下载新题库失败:', error));
+//             } else {
+//                 console.log('本地题库已是最新版本。');
+//             }
+//         })
+//         .catch(error => console.error('检查题库版本失败:', error));
+// }
+
+// // 页面加载时检查更新 (如果启用该功能)
+// document.addEventListener('DOMContentLoaded', () => {
+//     // checkAndUpdateQuestionBank(); 
+// }); 

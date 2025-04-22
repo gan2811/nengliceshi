@@ -102,9 +102,11 @@
             </div>
             <!-- **** Move Export button here, before Home button **** -->
             <div class="d-flex flex-wrap gap-2">
+                 <!-- **** 移除此按钮 ****
                  <button type="button" class="btn btn-outline-success" id="exportListBtn" onclick="exportHistoryList()">
                      <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
                  </button>
+                 -->
                 <button id="backToIndexBtn" class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
                     <i class="bi bi-house-door me-1"></i>返回首页
                 </button>
@@ -169,6 +171,16 @@
             <nav aria-label="Page navigation" class="mt-4">
                 <ul class="pagination justify-content-center" id="pagination"></ul>
             </nav>
+
+            <!-- 操作按钮区域 -->
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3"> <!-- 修改：使用 Grid 和 Flex 响应式布局 -->
+                <button id="clearHistoryBtn" class="btn btn-danger btn-sm"><i class="bi bi-trash me-1"></i> 清空历史记录</button>
+                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出历史记录</button>
+                <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()"> <!-- 调整样式和间距 -->
+                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
+                 </button>
+                <button id="uploadHistoryBtn" class="btn btn-primary btn-sm"><i class="bi bi-cloud-upload me-1"></i> 上传历史记录到云端</button>
+            </div>
         </div>
     </div>
 
@@ -195,6 +207,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script>
     <script src="js/main.js"></script>
     <script src="js/history.js"></script>
 </body>

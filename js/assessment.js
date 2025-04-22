@@ -183,6 +183,7 @@ function loadSections() {
     if (!position) {
         sectionSelectionDiv.classList.add('d-none');
         startBtn.disabled = true;
+        updateTotalSelectedQuestionsDisplay(); // **** 更新：即使没有岗位，也更新总题数显示为0 ****
         return;
     }
 
@@ -221,11 +222,12 @@ function loadSections() {
         sectionSelectionDiv.classList.add('d-none'); // Hide if no sections at all
         if (startBtnHint) startBtnHint.textContent = '开始测评 (无板块题目)';
         updateStartButton(); // Update button state
+        updateTotalSelectedQuestionsDisplay(); // **** 更新：无板块时也更新总题数显示 ****
         return;
     }
 
     // **** 新增：排序板块，将只有必答题的放到最后 ****
-    sectionEntries.sort(([sectionA, detailsA], [sectionB, detailsB]) => { 
+    sectionEntries.sort(([sectionA, detailsA], [sectionB, detailsB]) => {
         const hasRandomA = detailsA.randomCount > 0;
         const hasRandomB = detailsB.randomCount > 0;
 
@@ -240,7 +242,7 @@ function loadSections() {
         // 2. 如果都有随机题 或 都只有必答题，则按题库原始顺序排序
         const orderA = sectionOrder[sectionA];
         const orderB = sectionOrder[sectionB];
-        return orderA - orderB; 
+        return orderA - orderB;
     });
 
     // **** 遍历排序后的板块 ****
@@ -273,16 +275,16 @@ function loadSections() {
                     </h6>
                     <p class="card-text small text-muted mb-1">必答题数量: ${requiredCount}</p>
                     <p class="card-text small ${isDisabled ? 'text-secondary' : 'text-muted'} mb-2">可选随机题数量: ${randomCount}</p>
-                    <div class="input-group input-group-sm ${isDisabled ? 'd-none' : ''}"> 
-                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', -1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>-</button>
-                         <input type="number" class="form-control section-count-input"
-                                id="${inputId}"
-                                data-section="${section}"
-                                min="0" max="${randomCount}"
-                                value="0"
-                                oninput="updateSelectedSection(this)"
-                                ${isDisabled ? 'disabled' : ''}>
-                         <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', 1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>+</button>
+                    <div class="input-group input-group-sm ${isDisabled ? 'd-none' : ''}">
+                        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', -1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>-</button>
+                        <input type="number" class="form-control section-count-input"
+                               id="${inputId}"
+                               data-section="${section}"
+                               min="0" max="${randomCount}"
+                               value="0"
+                               oninput="updateSelectedSection(this)"
+                               ${isDisabled ? 'disabled' : ''}>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" onclick="changeValue('${inputId}', 1, ${randomCount})" ${isDisabled ? 'disabled' : ''}>+</button>
                     </div>
                     ${isDisabled ? '<p class="text-center text-danger small mt-2">(无可选随机题)</p>' : ''}
                 </div>
@@ -293,6 +295,7 @@ function loadSections() {
 
     sectionSelectionDiv.classList.remove('d-none'); // Show the section area
     updateStartButton(); // Update button state based on position selection
+    updateTotalSelectedQuestionsDisplay(); // **** 新增：加载板块后更新总题数显示 ****
 }
 
 // 新增: 用于增减按钮的函数
@@ -331,7 +334,7 @@ function updateSelectedSection(inputElement) {
             finalCount = count;
         }
     }
-    
+
     // 更新输入框的值以反映验证结果
     if (inputElement.value !== String(finalCount)) {
         inputElement.value = finalCount;
@@ -342,6 +345,49 @@ function updateSelectedSection(inputElement) {
 
     // 更新开始按钮状态
     updateStartButton();
+    updateTotalSelectedQuestionsDisplay(); // **** 新增：更新随机题数量后更新总题数显示 ****
+}
+
+// **** 新增：更新总选定题目数量显示的函数 ****
+function updateTotalSelectedQuestionsDisplay() {
+    // console.log("updateTotalSelectedQuestionsDisplay function called"); // <--- 注释掉日志 1
+    const position = document.getElementById('position').value;
+    const hintElement = document.getElementById('totalSelectedQuestionsHint');
+    // console.log("Hint element:", hintElement); // <--- 注释掉日志 2
+
+    if (!hintElement) {
+        // console.error("Hint element not found!"); // <--- 注释掉错误日志
+        return; // 如果元素不存在则退出
+    }
+
+    if (!position) {
+        hintElement.textContent = '总题数: 0';
+        // console.log("No position selected, setting text to '总题数: 0'"); // <--- 注释掉日志 3
+        return;
+    }
+
+    // 获取该岗位的题目
+    const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
+    const positionQuestions = questionBank.filter(q =>
+        q.position && (Array.isArray(q.position) ? q.position.includes(position) : q.position === position || q.position.includes('all'))
+    );
+
+    // 计算必答题数量
+    const requiredCount = positionQuestions.filter(q => q.type === 'required').length;
+
+    // 计算已选随机题数量
+    let selectedRandomCount = 0;
+    selectedSections.forEach(count => {
+        selectedRandomCount += count;
+    });
+
+    const totalCount = requiredCount + selectedRandomCount;
+    // console.log(`Calculated counts: Required=${requiredCount}, Random=${selectedRandomCount}, Total=${totalCount}`); // <--- 注释掉日志 4
+
+    // 更新显示文本
+    const newText = `本次测评总题数: ${totalCount} (必答: ${requiredCount}, 选答: ${selectedRandomCount})`;
+    hintElement.textContent = newText;
+    // console.log("Updated hint text to:", newText); // <--- 注释掉日志 5
 }
 
 // 更新开始按钮状态 (简化)
@@ -594,12 +640,22 @@ function displayCurrentQuestion() {
 
 // **** 新增辅助函数：检查是否所有题目都已回答 ****
 function checkAllAnswered() {
-    if (!currentQuestions || currentQuestions.length === 0) return false; // 没有题目不能算完成
-    return currentQuestions.every(question => {
+    console.log("[checkAllAnswered] 开始检查..."); // <--- 添加日志
+    if (!currentQuestions || currentQuestions.length === 0) {
+        console.log("[checkAllAnswered] 没有题目，返回 false"); // <--- 添加日志
+        return false; // 没有题目不能算完成
+    }
+    const result = currentQuestions.every((question, index) => { // <--- 添加 index 用于调试
         const answer = userAnswers[question.id];
         // 认为有效回答是 score 不为 null 且为数字
-        return answer && answer.score !== null && !isNaN(answer.score);
+        const isAnswered = answer && answer.score !== null && !isNaN(answer.score);
+        if (!isAnswered) { // <--- 添加日志
+            console.log(`[checkAllAnswered] 第 ${index + 1} 题 (ID: ${question.id}) 未评分或分数无效:`, answer?.score);
+        }
+        return isAnswered;
     });
+    console.log("[checkAllAnswered] 检查完成，所有题目是否都已评分:", result); // <--- 添加日志
+    return result;
 }
 
 // **** 修改保存逻辑：允许切换题目，即使未评分 ****
@@ -773,121 +829,123 @@ function updateSubmitButton() {
     }
 }
 
-// **** 修改：提交测评 ****
-function submitAssessment() {
-    // **** 新增：在提交前获取测评人姓名 ****
+// **** 修改：提交测评 (调用云函数) ****
+async function submitAssessment() {
+    console.log("[submitAssessment] 函数开始执行 (云函数版)");
+
+    // 获取测评人姓名 (逻辑不变)
     const assessorName = prompt("请输入测评人姓名：");
     if (assessorName === null || assessorName.trim() === "") {
         alert("测评人姓名不能为空，提交已取消。");
-        return; // 中止提交
+        console.log("[submitAssessment] 测评人姓名为空或取消，函数返回");
+        return;
     }
-    // 将测评人姓名存入当前数据
+    console.log("[submitAssessment] 获取到测评人姓名:", assessorName);
+    // 确保 currentAssessmentData 存在
+    if (!currentAssessmentData) {
+        console.error("[submitAssessment] currentAssessmentData 为空，无法提交。");
+        alert("发生错误：找不到当前测评数据。");
+        return;
+    }
     currentAssessmentData.assessor = assessorName.trim();
 
-    // **先保存最后一题的答案**
-    saveCurrentAnswer(false); 
-    recordPreviousQuestionTime(); 
-    // **** stopTimer() 先不调用 ****
+    // 保存最后一题答案和时间 (逻辑不变)
+    saveCurrentAnswer(false);
+    recordPreviousQuestionTime();
 
-    // **检查所有题目是否都已评分**
-    if (!checkAllAnswered()) {
+    // 检查所有题目是否都已评分 (逻辑不变)
+    const allAnswered = checkAllAnswered();
+    console.log("[submitAssessment] checkAllAnswered() 返回:", allAnswered);
+    if (!allAnswered) {
         alert('您有未评分的题目，请完成后再提交。');
-        // Maybe restart timer or highlight missing answers?
-        // For now, just prevent submission.
-         startTimer(new Date(currentAssessmentData.startTime)); // Restart timer
+        console.log("[submitAssessment] 存在未评分题目，函数返回");
         return;
     }
 
-    // ... (rest of the submit logic: calculate score, confirm if needed, save to history)
+    // 计算分数、时长等最终数据 (逻辑不变)
     const assessmentEndTime = new Date();
-    // ... (calculate duration, score, maxScore as before)
-     let totalScore = 0;
+    let totalScore = 0;
     let maxPossibleScore = 0;
-
     currentAssessmentData.questions.forEach(question => {
         const answer = userAnswers[question.id];
         const standardScore = question.standardScore || 0;
         maxPossibleScore += standardScore;
-        // Score calculation relies on checkAllAnswered ensuring score is valid number
         totalScore += (answer && typeof answer.score === 'number') ? answer.score : 0;
-        // Ensure duration exists
         if (answer && (answer.duration === undefined || answer.duration === null)) {
              answer.duration = 0;
         }
     });
-
-    // **** 添加日志：检查恢复后的初始活动时间 ****
     const initialTotalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0;
-
-    // **** 计算最后活动会话时长 ****
     let finalSessionDurationSeconds = 0;
-    const sessionStartTime = currentSessionStartTime; 
-    if (sessionStartTime) {
-        finalSessionDurationSeconds = Math.floor((assessmentEndTime - sessionStartTime) / 1000);
+    if (currentSessionStartTime) {
+        finalSessionDurationSeconds = Math.floor((assessmentEndTime - currentSessionStartTime) / 1000);
     } else {
         console.warn("提交时 currentSessionStartTime 为空，最后会话时长计为0。");
     }
-
-    // **** 在计算完会话时长后，再停止计时器 ****
-    stopTimer(); 
-
-    // **** 计算总活动时长 ****
+    stopTimer();
     let totalActiveSeconds = initialTotalActiveSeconds + finalSessionDurationSeconds;
+    const scoreRate = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
 
-    // 更新 currentAssessmentData
+    // 更新 currentAssessmentData 用于传递给云函数
     currentAssessmentData.answers = userAnswers;
     currentAssessmentData.score = totalScore;
     currentAssessmentData.maxScore = maxPossibleScore;
-    // **** 使用总活动时间计算最终时长 ****
-    currentAssessmentData.duration = Math.round(totalActiveSeconds / 60); 
-    currentAssessmentData.status = 'completed';
-    currentAssessmentData.timestamp = assessmentEndTime.toISOString();
-    currentAssessmentData.totalActiveSeconds = totalActiveSeconds; // 保存最终的总活动秒数
+    currentAssessmentData.scoreRate = scoreRate;
+    currentAssessmentData.duration = Math.round(totalActiveSeconds / 60); // 仍然计算，云函数也会计算
+    currentAssessmentData.status = 'completed'; // 标记为完成
+    currentAssessmentData.timestamp = assessmentEndTime.toISOString(); // 完成时间戳
+    currentAssessmentData.totalActiveSeconds = totalActiveSeconds;
 
-    // **** 新增：计算得分率 ****
-    const scoreRate = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
+    console.log("[submitAssessment] 准备调用云函数 submitAssessmentCloud...");
+    console.log("[submitAssessment] 传递的数据包预览:", JSON.parse(JSON.stringify(currentAssessmentData))); // 打印数据包快照
 
-    // Save to history
-    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    const historyRecord = {
-        id: currentAssessmentData.id,
-        userInfo: currentAssessmentData.userInfo,
-        position: currentAssessmentData.position,
-        assessor: currentAssessmentData.assessor,
-        timestamp: currentAssessmentData.timestamp,
-        startTime: currentAssessmentData.startTime, // **** 添加原始 startTime ****
-        duration: currentAssessmentData.duration, // 使用计算好的活动分钟数
-        score: { 
-            totalScore: totalScore,
-            maxScore: maxPossibleScore,
-            scoreRate: scoreRate
-        },
-        questions: currentAssessmentData.questions.map(q => ({
-             id: q.id,
-             content: q.content,
-             standardScore: q.standardScore,
-             standardAnswer: q.standardAnswer,
-             section: q.section,
-             type: q.type,
-             knowledgeSource: q.knowledgeSource
-         })),
-        answers: currentAssessmentData.answers,
-        status: 'completed', // 标记为完成
-        totalActiveSeconds: currentAssessmentData.totalActiveSeconds // 保存活动秒数供参考
-    };
-    
-    // **** 添加日志：检查要保存的记录 ****
-    // console.log("[Submit Debug] Final historyRecord to be saved:", JSON.parse(JSON.stringify(historyRecord)));
+    // **** 调用云函数 ****
+    try {
+        // 显示加载状态 (可选)
+        const submitBtn = document.getElementById('submitBtn');
+        if(submitBtn) {
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 提交中...';
+        }
 
-    // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
-    const historyWithoutPaused = history.filter(item => !(item.id === historyRecord.id && item.status === 'paused'));
-    historyWithoutPaused.push(historyRecord);
-    localStorage.setItem('assessmentHistory', JSON.stringify(historyWithoutPaused));
+        const savedAssessmentObjectId = await AV.Cloud.run('submitAssessmentCloud', { assessmentData: currentAssessmentData });
 
-    localStorage.removeItem('currentAssessment');
-    // console.log("Assessment submitted and saved to history. Redirecting...");
+        console.log("[submitAssessment] 云函数调用成功，返回 Assessment ObjectId:", savedAssessmentObjectId);
 
-    window.location.href = `result.html?assessmentId=${currentAssessmentData.id}`;
+        // **[成功处理] 清除本地存储并跳转**
+        // 保存到本地历史记录 (可选，因为现在主要依赖云端)
+        // 如果决定不保存本地历史，可以注释掉下面几行
+        const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+        const historyRecord = currentAssessmentData; // 直接使用准备好的数据
+        const historyWithoutPaused = history.filter(item => !(item.id === historyRecord.id && item.status === 'paused'));
+        historyWithoutPaused.push(historyRecord);
+        localStorage.setItem('assessmentHistory', JSON.stringify(historyWithoutPaused));
+        console.log("[submitAssessment] 结果已同步保存到本地历史记录。");
+
+        localStorage.removeItem('currentAssessment');
+        console.log("[submitAssessment] 本地 currentAssessment 已清除。准备跳转...");
+
+        window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
+
+    } catch (error) {
+        // **[错误处理]**
+        console.error('[submitAssessment] 调用云函数时出错:', error);
+        let errorMessage = '保存测评结果时出错，请稍后重试或联系管理员。';
+        if (error.code && error.message) {
+            // 显示 LeanCloud 返回的更具体的错误信息
+            errorMessage += `\n错误 (${error.code}): ${error.message}`;
+        } else if (typeof error === 'string') {
+            errorMessage += `\n详情: ${error}`;
+        }
+        alert(errorMessage);
+
+        // 恢复按钮状态 (可选)
+        const submitBtn = document.getElementById('submitBtn');
+        if(submitBtn) {
+            submitBtn.disabled = false; // 重新启用按钮，以便用户可以重试
+            submitBtn.innerHTML = '提交测评';
+        }
+    }
 }
 
 // **** 修改：暂存测评 ****

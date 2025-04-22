@@ -856,11 +856,11 @@ function calculateIndividualQuestionPerformance(record) {
          const knowledgeSource = q.knowledgeSource || null; // 获取知识点来源
 
          // **** 修改：包含 id 和 knowledgeSource, 初始化 score 为 null ****
-              const questionInfo = {
+             const questionInfo = {
               id: q.id, // 添加 ID
-                  content: q.content || '无内容',
+                 content: q.content || '无内容',
               score: null, // 初始化为 null, 表示未作答或无效
-                  standardScore: standardScore,
+                 standardScore: standardScore,
               comment: '', // 默认空备注
               knowledgeSource: knowledgeSource // 添加来源
           };
@@ -879,11 +879,11 @@ function calculateIndividualQuestionPerformance(record) {
                      if (scoreRate < 60) { // 低于 60% 的放入待提高
                          performance.worst.push(questionInfo);
                      } else { // 大于等于 60% 的放入掌握较好
-                         performance.best.push(questionInfo);
+                 performance.best.push(questionInfo);
                      }
                  } else { // 分数无效或为 null (可能发生在导入或旧数据)，归为待提高
-                     performance.worst.push(questionInfo);
-                 }
+                 performance.worst.push(questionInfo);
+             }
              } else { // 标准分为0或无效，归为待提高
                  performance.worst.push(questionInfo);
              }
@@ -1417,7 +1417,7 @@ function loadEmployeeList(callback) {
     // 从 localStorage 加载所有历史记录
     const allHistoryStr = localStorage.getItem('assessmentHistory');
     // // // console.log("localStorage中的assessmentHistory:", allHistoryStr);
-
+    
     if (!allHistoryStr) {
         console.error("localStorage中没有assessmentHistory数据");
         const option = document.createElement('option');
@@ -1441,7 +1441,7 @@ function loadEmployeeList(callback) {
     allHistory.forEach((record, index) => {
         const employeeId = record?.userInfo?.id || record?.userInfo?.employeeId;
         const employeeName = record?.userInfo?.name;
-        const position = record?.position || record?.userInfo?.position || '未知岗位';
+        const position = record?.position || record?.userInfo?.position || '未知岗位'; 
         // // // console.log(`[loadEmployeeList] 检查记录 ${index} (ID: ${record?.id}): ` +
         // // //             `员工ID='${employeeId}', 姓名='${employeeName}', 岗位='${position}'`);
         
@@ -1483,15 +1483,15 @@ function loadEmployeeList(callback) {
     // // // console.log("[loadEmployeeList] 构建完成的 employeesMap:", employeesMap);
     allEmployees = Array.from(employeesMap.values());
     // // // console.log("[loadEmployeeList] 构建完成的 allEmployees 数组:", allEmployees);
-
-    filterEmployeesByPosition();
-
+    
+    filterEmployeesByPosition(); 
+    
     if (typeof callback === 'function') {
         callback();
     }
-
+    
     if (allEmployees.length === 0) {
-        document.getElementById('individualAnalysisPlaceholder').innerHTML =
+        document.getElementById('individualAnalysisPlaceholder').innerHTML = 
             '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle me-2"></i>未从测评记录中找到有效的员工信息，请确保测评时填写了完整的个人信息。</div>';
     }
     // // // console.log("[loadEmployeeList] 结束.");

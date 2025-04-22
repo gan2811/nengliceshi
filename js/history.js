@@ -24,6 +24,12 @@ document.addEventListener('DOMContentLoaded', function() {
         console.warn('Could not find detailModal or backToIndexBtn for focus management.');
     }
     // **** 结束新增 ****
+
+    // 新增：绑定上传按钮事件
+    const uploadBtn = document.getElementById('uploadHistoryBtn');
+    if (uploadBtn) {
+        uploadBtn.addEventListener('click', uploadHistoryToLeanCloud);
+    }
 });
 
 // 初始化筛选器
@@ -919,3 +925,156 @@ function resumeAssessment(id) {
 
 // **** 确保依赖函数存在 ****
 // calculateRankings, formatDate, getPositionName 必须在此文件或 main.js 中定义
+
+// 新增：上传历史记录到 LeanCloud
+async function uploadHistoryToLeanCloud() {
+    const uploadBtn = document.getElementById('uploadHistoryBtn');
+    if (!uploadBtn) return;
+
+    if (!confirm("确定要将本地存储的历史记录上传到云端吗？\n这可能需要一些时间，并且只会上传标记为 'completed' 且云端尚不存在的记录。")) {
+        return;
+    }
+
+    uploadBtn.disabled = true;
+    uploadBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 上传中...';
+
+    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    let successCount = 0;
+    let skippedCount = 0;
+    let failedCount = 0;
+
+    console.log(`[UploadHistory] 开始上传 ${history.length} 条本地记录...`);
+
+    for (const record of history) {
+        // **** 修改：允许上传 paused 和 completed 状态 ****
+        if (record.status !== 'completed' && record.status !== 'paused') {
+            console.log(`[UploadHistory] 跳过记录 ID ${record.id} (状态: ${record.status || 'unknown'})`);
+            continue;
+        }
+
+        try {
+            // 1. 检查云端是否已存在该 assessmentId
+            console.log(`[UploadHistory] 检查记录 ID ${record.id}...`);
+            const existingQuery = new AV.Query('Assessment');
+            existingQuery.equalTo('assessmentId', record.id);
+            const count = await existingQuery.count();
+
+            if (count > 0) {
+                console.log(`[UploadHistory] 记录 ID ${record.id} 在云端已存在，跳过。`);
+                skippedCount++;
+                continue;
+            }
+
+            console.log(`[UploadHistory] 准备上传记录 ID ${record.id} (状态: ${record.status})...`);
+            console.warn("[UploadHistory] 请确保 LeanCloud 的 'Assessment' Class 包含字段: currentQuestionIndex (Number), elapsedSeconds (Number), totalActiveSeconds (Number) 以便正确恢复 paused 记录。");
+
+            // 2. 获取或创建 UserProfile
+            const userQuery = new AV.Query('UserProfile');
+            const employeeIdStr = record.userInfo.employeeId;
+            const employeeIdNum = parseInt(employeeIdStr, 10);
+
+            if (isNaN(employeeIdNum)) {
+                 console.error(`[UploadHistory] 记录 ID ${record.id} 的 employeeId '${employeeIdStr}' 无效，跳过此记录。`);
+                 failedCount++;
+                 continue;
+            }
+
+            userQuery.equalTo('employeeId', employeeIdNum);
+            let userProfile = await userQuery.first();
+
+            if (!userProfile) {
+                userProfile = new AV.Object('UserProfile');
+                userProfile.set('employeeId', employeeIdNum);
+                userProfile.set('name', record.userInfo.name);
+                userProfile.set('stationCode', record.userInfo.station);
+                userProfile.set('positionCode', record.userInfo.position);
+                // 注意：这里没有设置 ACL，如果需要，需要添加相应逻辑
+                userProfile = await userProfile.save();
+                console.log(`[UploadHistory] 为记录 ID ${record.id} 创建了新的 UserProfile: ${userProfile.id}`);
+            }
+
+            // 3. 创建 Assessment 对象
+            const Assessment = AV.Object.extend('Assessment');
+            const assessment = new Assessment();
+            // 注意：这里没有设置 ACL
+            assessment.set('assessmentId', record.id); // 使用本地记录的 ID
+            assessment.set('userPointer', AV.Object.createWithoutData('UserProfile', userProfile.id));
+            assessment.set('assessorName', record.assessor);
+            assessment.set('positionCode', record.position);
+            assessment.set('startTime', new Date(record.startTime));
+            assessment.set('status', record.status); // **** 使用记录的实际状态 ****
+
+            // **** 根据状态设置不同的字段 ****
+            if (record.status === 'completed') {
+                // 使用 record.timestamp 作为结束时间 (因为它是完成时的时间戳)
+                assessment.set('endTime', new Date(record.timestamp));
+                assessment.set('totalActiveSeconds', record.totalActiveSeconds || 0);
+                assessment.set('durationMinutes', Math.round((record.totalActiveSeconds || 0) / 60));
+                assessment.set('totalScore', record.score.totalScore);
+                assessment.set('maxPossibleScore', record.score.maxScore);
+                assessment.set('scoreRate', record.score.scoreRate);
+                 // 对于 completed 记录，这些字段可以设为 null 或不设置
+                 assessment.set('currentQuestionIndex', null);
+                 assessment.set('elapsedSeconds', null);
+            } else if (record.status === 'paused') {
+                // 对于 paused 记录，保存暂停时的状态
+                assessment.set('endTime', null); // Paused 记录没有结束时间
+                assessment.set('totalActiveSeconds', record.totalActiveSeconds || 0); // 保存已累计的活动时间
+                assessment.set('durationMinutes', Math.round((record.totalActiveSeconds || 0) / 60)); // 当前累计分钟数
+                assessment.set('currentQuestionIndex', record.currentQuestionIndex || 0); // 保存暂停时的题目索引
+                assessment.set('elapsedSeconds', record.elapsedSeconds || 0); // 保存暂停时的总流逝秒数
+                // Paused 记录没有最终分数
+                assessment.set('totalScore', null);
+                assessment.set('maxPossibleScore', null);
+                assessment.set('scoreRate', null);
+            }
+
+            const savedAssessment = await assessment.save();
+            console.log(`[UploadHistory] 记录 ID ${record.id} (状态: ${record.status}) 的 Assessment 已保存: ${savedAssessment.id}`);
+
+            // 4. 创建 AssessmentDetail 对象数组
+            const AssessmentDetail = AV.Object.extend('AssessmentDetail');
+            const detailObjects = [];
+            const questions = record.questions || [];
+            const answers = record.answers || {};
+
+            questions.forEach(question => {
+                const answer = answers[question.id];
+                // 对于 paused 记录，answer 可能不存在或 score 为 null
+                // 但我们仍然保存题目信息和已有的答案数据
+                const detail = new AssessmentDetail();
+                 // 注意：这里没有设置 ACL
+                detail.set('assessmentPointer', AV.Object.createWithoutData('Assessment', savedAssessment.id));
+                detail.set('questionId', question.id);
+                detail.set('questionContent', question.content);
+                detail.set('standardScore', question.standardScore);
+                detail.set('section', question.section);
+                detail.set('type', question.type);
+                detail.set('knowledgeSource', question.knowledgeSource);
+                detail.set('score', answer?.score); // 保存分数 (可能为 null)
+                detail.set('comment', answer?.comment || ''); // 保存评论
+                detail.set('durationSeconds', Number(answer?.duration || 0)); // 保存用时
+                detailObjects.push(detail);
+            });
+
+            // 5. 批量保存 AssessmentDetail 对象
+            if (detailObjects.length > 0) {
+                await AV.Object.saveAll(detailObjects);
+                console.log(`[UploadHistory] 记录 ID ${record.id} 的 ${detailObjects.length} 个 AssessmentDetails 已保存。`);
+            }
+
+            successCount++;
+            console.log(`[UploadHistory] 记录 ID ${record.id} 上传成功。`);
+
+        } catch (error) {
+            console.error(`[UploadHistory] 处理记录 ID ${record.id} 时出错:`, error);
+            failedCount++;
+        }
+    }
+
+    console.log(`[UploadHistory] 上传完成: ${successCount} 成功, ${skippedCount} 跳过 (已存在), ${failedCount} 失败。`);
+    alert(`上传完成！\n成功: ${successCount}\n跳过 (已存在): ${skippedCount}\n失败: ${failedCount}\n\n请检查控制台获取详细错误信息。`);
+
+    uploadBtn.disabled = false;
+    uploadBtn.innerHTML = '<i class="bi bi-cloud-upload me-1"></i> 上传历史记录到云端';
+}
