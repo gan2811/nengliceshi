@@ -1,3 +1,5 @@
+console.log("--- js/main.js script started ---"); // 新增日志：确认脚本开始执行
+
 // LeanCloud SDK Initialization
 const APP_ID = 'WL96U3J6bC9A7nDWV7l9Y1O9-gzGzoHsz';
 // const APP_KEY = '替换为你的 App Key'; // 不再需要 App Key
@@ -5,6 +7,7 @@ const APP_ID = 'WL96U3J6bC9A7nDWV7l9Y1O9-gzGzoHsz';
 // 请在 LeanCloud 控制台 -> 设置 -> 应用凭证 -> API 访问域名 确认此地址
 const SERVER_URL = 'https://wl96u3j6.lc-cn-n1-shared.com'; // **[修改]** 使用截图确认的地址
 
+console.log("Attempting LeanCloud SDK Initialization..."); // 新增日志：确认即将尝试初始化
 try {
   AV.init({
     appId: APP_ID,
