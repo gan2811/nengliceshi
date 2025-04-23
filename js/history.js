@@ -561,7 +561,7 @@ function exportDetail() {
 function checkLocalRecords() {
     console.log("[checkLocalRecords] 开始检查本地记录...");
     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    localUnsyncedRecords = history.filter(record => 
+    localUnsyncedRecords = history.filter(record =>
         record.status === 'paused' || record.status === 'failed_to_submit'
     );
     console.log(`[checkLocalRecords] 找到 ${localUnsyncedRecords.length} 条未同步记录。`);
@@ -575,11 +575,19 @@ function checkLocalRecords() {
         // 插入到筛选区域下方，表格上方
         const filterSection = document.querySelector('.filter-section');
         const tableContainer = document.querySelector('.table-responsive');
+        const historyContainer = document.querySelector('.container'); // Fallback container
+
         if (filterSection && tableContainer) {
-             filterSection.insertBefore(localRecordsContainer, tableContainer);
+             // Insert before the table container
+             filterSection.parentNode.insertBefore(localRecordsContainer, tableContainer);
+        } else if (historyContainer) {
+            // Fallback: 插入到 container 顶部 or a known element
+            const firstChild = historyContainer.firstChild;
+            historyContainer.insertBefore(localRecordsContainer, firstChild);
         } else {
-            // Fallback: 插入到 container 顶部
-            document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
+            console.error("Could not find a suitable place to insert local records display area.");
+            // As a last resort, append to body, though this might break layout
+            document.body.appendChild(localRecordsContainer);
         }
     }
 
@@ -589,35 +597,49 @@ function checkLocalRecords() {
     if (localUnsyncedRecords.length === 0) {
         localRecordsContainer.innerHTML = '<p class="text-center text-muted mb-0"><i class="bi bi-check-circle me-1"></i> 没有找到本地暂存或提交失败的测评记录。</p>';
     } else {
-        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">'
+        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group list-group-flush">' // Use list-group-flush
         localUnsyncedRecords.forEach((record, index) => {
-            const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
+            // **** 修改：优先使用 startTime ****
+            const displayTime = record.status === 'paused' && record.startTime
+                               ? formatDate(new Date(record.startTime), true)
+                               : formatDate(new Date(record.timestamp || record.startTime || Date.now()), true); // Fallback time
             const name = record.userInfo?.name || '未知';
             const position = getPositionName(record.position || record.userInfo?.position);
             let statusBadge = '';
             let actionsHtml = '';
+            // **** 新增：详情按钮 ****
+            const detailButtonHtml = `<button class="btn btn-sm btn-outline-info me-1" onclick="viewLocalDetail('${record.id}')"><i class="bi bi-eye"></i> 详情</button>`;
 
             if (record.status === 'paused') {
                 statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
+                // **** 修改：添加详情按钮 ****
                 actionsHtml = `
+                    ${detailButtonHtml}
                     <button class="btn btn-sm btn-outline-primary me-1" onclick="resumeLocalAssessment('${record.id}')"><i class="bi bi-play-circle"></i> 继续</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
                 `;
             } else if (record.status === 'failed_to_submit') {
                 statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
+                 // **** 修改：添加详情按钮 ****
                 actionsHtml = `
+                     ${detailButtonHtml}
                     <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
                 `;
             }
 
+             // **** 修改：显示 -- 代替分数 ****
+             const scoreDisplay = record.status === 'paused' ? '-- / --' : `${record.score || 0} / ${record.maxScore || '--'}`;
+             const scoreRateDisplay = record.status === 'paused' ? '--' : `${record.scoreRate || 0}%`;
+
             listHtml += `
-                <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
-                    <div>
-                        <strong>${name}</strong> (${position}) ${statusBadge}<br>
-                        <small class="text-muted">时间: ${timestamp}</small>
-                    </div>
-                    <div>
+                <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center" data-record-id="${record.id}">
+                     <div class="mb-2 mb-md-0 me-md-3"> <!-- Added margin for spacing -->
+                         <strong>${name}</strong> (${position}) ${statusBadge}<br>
+                         <small class="text-muted">时间: ${displayTime}</small><br>
+                         <small class="text-muted">得分: ${scoreDisplay} (${scoreRateDisplay})</small>
+                     </div>
+                    <div class="ms-md-auto"> <!-- Push actions to the right on medium+ screens -->
                         ${actionsHtml}
                     </div>
                 </li>
@@ -626,6 +648,114 @@ function checkLocalRecords() {
         listHtml += '</ul>';
         localRecordsContainer.innerHTML = listHtml;
     }
+}
+
+// **** 新增：查看本地记录详情 ****
+function viewLocalDetail(recordId) {
+    console.log(`[viewLocalDetail] Viewing local detail for ID: ${recordId}`);
+    const record = localUnsyncedRecords.find(r => r.id == recordId); // Use local cache
+
+    const detailModalBody = document.getElementById('detailModalBody');
+    const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+
+    if (!record) {
+        detailModalBody.innerHTML = `<p class="text-danger text-center">无法找到 ID 为 ${recordId} 的本地记录详情。</p>`;
+        detailModal.show();
+        return;
+    }
+
+    // 构建详情 HTML (基于 buildDetailHtml 但使用本地数据结构)
+    const userInfo = record.userInfo || {};
+    const name = userInfo.name || 'N/A';
+    const employeeId = userInfo.employeeId || 'N/A';
+    const station = getStationName(userInfo.station) || 'N/A'; // Use getStationName
+    const position = getPositionName(userInfo.position || record.position); // Use getPositionName
+    const assessor = record.assessor || (record.status === 'failed_to_submit' ? '(提交失败时输入)' : '(未完成)');
+    const startTime = record.startTime ? formatDate(new Date(record.startTime), true) : 'N/A';
+    const lastSavedTime = record.timestamp ? formatDate(new Date(record.timestamp), true) : 'N/A';
+    const statusText = record.status === 'paused' ? '暂存中' : '提交失败';
+
+    // 得分信息 (显示 "--" 如果是暂存)
+    const totalScore = record.status === 'paused' ? '--' : (record.score !== undefined && record.score !== null ? record.score : 'N/A');
+    const maxScore = record.maxScore !== undefined ? record.maxScore : 'N/A';
+    const scoreRate = record.status === 'paused' ? '--' : (record.scoreRate !== undefined ? `${record.scoreRate}%` : 'N/A');
+
+    // 用时信息
+    let durationText = 'N/A';
+    const totalSeconds = record.totalActiveSeconds;
+    if (totalSeconds !== undefined && totalSeconds !== null) {
+       const minutes = Math.floor(totalSeconds / 60);
+       const seconds = totalSeconds % 60;
+       durationText = `${minutes}分`;
+       if (seconds > 0) durationText += ` ${seconds}秒`;
+    } else if (record.duration !== undefined && record.duration !== null){ // Fallback to older 'duration' if exists
+       durationText = `${record.duration}分钟`;
+    }
+
+    let tableHtml = `
+        <h6>基本信息 (本地记录)</h6>
+        <div class="row mb-3">
+            <div class="col-md-6"><strong>姓名:</strong> ${name}</div>
+            <div class="col-md-6"><strong>工号:</strong> ${employeeId}</div>
+            <div class="col-md-6"><strong>车站:</strong> ${station}</div>
+            <div class="col-md-6"><strong>岗位:</strong> ${position}</div>
+            <div class="col-md-6"><strong>测评人:</strong> ${assessor}</div>
+            <div class="col-md-6"><strong>开始时间:</strong> ${startTime}</div>
+            <div class="col-md-6"><strong>记录时间:</strong> ${lastSavedTime}</div>
+            <div class="col-md-6"><strong>状态:</strong> ${statusText}</div>
+             <div class="col-md-6"><strong>累计用时:</strong> ${durationText}</div>
+        </div>
+        <h6>得分信息</h6>
+        <div class="row mb-3">
+            <div class="col-md-4"><strong>得分:</strong> ${totalScore}</div>
+            <div class="col-md-4"><strong>标准分:</strong> ${maxScore}</div>
+            <div class="col-md-4"><strong>得分率:</strong> ${scoreRate}</div>
+        </div>
+        ${record.status === 'failed_to_submit' && record.errorInfo ? `
+        <h6>提交失败信息</h6>
+        <div class="alert alert-danger small">
+            <strong>错误代码:</strong> ${record.errorInfo.code || 'N/A'}<br>
+            <strong>错误消息:</strong> ${record.errorInfo.message || 'N/A'}<br>
+            <strong>失败时间:</strong> ${formatDate(new Date(record.errorInfo.timestamp), true) || 'N/A'}
+        </div>
+        ` : ''}
+        <h6>题目详情 (截至记录时间)</h6>
+        <table class="table table-sm table-bordered mt-2">
+          <thead>
+            <tr><th>序号</th><th>题目内容</th><th>标准分</th><th>得分</th><th>用时(秒)</th><th>备注</th></tr>
+          </thead>
+          <tbody>
+    `;
+
+    const questions = record.questions || [];
+    const answers = record.answers || {};
+
+    if (questions.length > 0) {
+        questions.forEach((question, index) => {
+            const answer = answers[question.id] || {};
+            const qContent = question.content || '题目内容丢失';
+            const stdScore = question.standardScore !== undefined ? question.standardScore : 'N/A';
+            const score = (answer.score !== null && answer.score !== undefined) ? answer.score : '未评分';
+            const duration = answer.duration !== undefined ? answer.duration : 'N/A';
+            const comment = answer.comment || '无'; // 确保显示评语
+            tableHtml += `
+                <tr>
+                  <td>${index + 1}</td>
+                  <td class="text-start">${qContent}</td> <!-- Align left -->
+                  <td>${stdScore}</td>
+                  <td>${score}</td>
+                  <td>${duration}</td>
+                  <td class="text-start">${comment}</td> <!-- Align left -->
+                </tr>
+            `;
+        });
+    } else {
+        tableHtml += '<tr><td colspan="6" class="text-center text-muted">无题目详情数据</td></tr>';
+    }
+
+    tableHtml += `</tbody></table>`;
+    detailModalBody.innerHTML = tableHtml;
+    detailModal.show();
 }
 
 // **** 新增：删除本地记录 ****
@@ -662,29 +792,39 @@ function resumeLocalAssessment(recordIdToResume) {
     const assessmentToResume = history.find(record => record.id == recordIdToResume && record.status === 'paused');
 
     if (assessmentToResume) {
-        // 检查是否有正在进行的测评
-        if (localStorage.getItem('currentAssessment')) {
-            const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
-            // 如果当前的就是要恢复的，或者当前的是已提交/失败的，可以直接覆盖
-            if (currentData.id == recordIdToResume || currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
-                 // 可以直接覆盖
-            } else if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
-                 return; // 用户取消
-            }
+        // 检查是否有正在进行的测评 (非当前要恢复的)
+        const currentAssessmentRaw = localStorage.getItem('currentAssessment');
+        if (currentAssessmentRaw) {
+             const currentData = JSON.parse(currentAssessmentRaw);
+             // Allow overwriting if current is the same ID or already completed/failed
+             if (currentData.id != recordIdToResume && currentData.status !== 'completed' && currentData.status !== 'failed_to_submit') {
+                  if (!confirm("当前已有另一个正在进行的测评。继续将丢失该测评的进度，确定要继续吗？")) {
+                     return; // 用户取消
+                 }
+             }
         }
 
         // 将选中的测评记录存入 currentAssessment
+        // **** 关键：恢复时将状态改回 in_progress ****
+        assessmentToResume.status = 'in_progress';
+        // 清除可能存在的错误信息 (虽然 paused 不应该有)
+        delete assessmentToResume.errorInfo;
         localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
 
         // 从历史记录中移除暂存状态（推荐）
         history = history.filter(record => record.id != recordIdToResume);
         localStorage.setItem('assessmentHistory', JSON.stringify(history));
 
-        console.log("Assessment data loaded into currentAssessment. Redirecting...");
-        window.location.href = 'assessment.html'; // 跳转到测评页面
+        console.log("Assessment data loaded into currentAssessment. Redirecting to assessment.html...");
+        // **** 修改：通过 URL 参数传递 ID，让 assessment.js 处理加载 ****
+        // window.location.href = `assessment.html?resumeId=${recordIdToResume}`;
+        // **** 更正：上面的 resumeLocalAssessment 已经将数据放入 currentAssessment ****
+        // **** 因此 assessment.js 无需特殊处理 resumeId，直接跳转即可 ****
+        window.location.href = 'assessment.html';
+
     } else {
         console.error(`无法找到 ID 为 ${recordIdToResume} 的可继续的本地测评记录。`);
-        alert("无法继续测评，记录可能已被删除或状态已改变。");
+        alert("无法继续测评，记录可能已被删除或状态已改变。请刷新页面或重新检查本地记录。");
         checkLocalRecords(); // 刷新本地列表显示
     }
 }
