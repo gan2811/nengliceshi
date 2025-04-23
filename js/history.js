@@ -104,138 +104,279 @@ function updateSortIcons() {
 async function loadHistoryFromCloud(page = 1) {
     currentPage = page;
     const tableBody = document.getElementById('historyTableBody');
-    tableBody.innerHTML = '<tr><td colspan="10" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在加载记录...</td></tr>'; // 显示加载提示
+    tableBody.innerHTML = '<tr><td colspan="10" class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在加载记录...</td></tr>';
 
     try {
-        // --- 构建基础查询 ---
-        const query = new AV.Query('Assessment');
-        query.include('userPointer'); // 包含用户信息
-
-        // --- 应用筛选条件 ---
-        // 日期筛选 (基于 endTime 字段)
-        if (currentFilters.startDate) {
-            query.greaterThanOrEqualTo('endTime', new Date(currentFilters.startDate + 'T00:00:00.000Z'));
-        }
-        if (currentFilters.endDate) {
-            // 结束日期需要包含当天，所以设置到当天的 23:59:59.999
-            const endDate = new Date(currentFilters.endDate + 'T00:00:00.000Z');
-            endDate.setDate(endDate.getDate() + 1); // 加一天
-            query.lessThan('endTime', endDate);
-        }
-        // 岗位筛选
-        if (currentFilters.position) {
-            query.equalTo('positionCode', currentFilters.position);
-        }
-        // 搜索筛选 (姓名或工号)
-        if (currentFilters.searchText) {
-            // 需要分别查询 UserProfile 和 Assessment
-            const nameQuery = new AV.Query('UserProfile');
-            nameQuery.contains('name', currentFilters.searchText); // 模糊匹配姓名
-
-            const employeeIdQuery = new AV.Query('UserProfile');
-             // 工号通常是精确匹配，如果需要模糊匹配，用 contains，但需要确保 employeeId 是字符串类型
-             // 假设 employeeId 是数字类型，需要精确匹配
-            const searchId = parseInt(currentFilters.searchText, 10);
-             if (!isNaN(searchId)) {
-                 employeeIdQuery.equalTo('employeeId', searchId); 
-             } else {
-                 // 如果输入的不是纯数字，可能只按姓名搜索，或返回空结果
-                 // 这里我们合并查询，如果工号无效，该查询可能无结果
-                 employeeIdQuery.equalTo('employeeId', -9999); // 使工号查询无结果
-             }
-
-            const userQuery = AV.Query.or(nameQuery, employeeIdQuery);
-            // 查询匹配的用户
-            const users = await userQuery.find();
-            const userPointers = users.map(user => AV.Object.createWithoutData('UserProfile', user.id));
-            
-            if (userPointers.length > 0) {
-                 // 如果找到用户，筛选 Assessment 中 userPointer 在这些用户中的记录
-                 query.containedIn('userPointer', userPointers);
-            } else {
-                // 如果根据姓名/工号没找到用户，则主查询不可能有结果
-                query.equalTo('objectId', '__NEVER_MATCH__'); // 设置一个不可能匹配的条件
-            }
-        }
+        // --- 构建基础查询 (用于分页显示) ---
+        const displayQuery = await buildAssessmentQuery(); // Now async due to user search
 
         // --- 获取总数用于分页 ---
-        totalRecords = await query.count();
+        totalRecords = await displayQuery.count();
 
-        // --- 应用排序 ---
-        if (currentSortOrder === 'asc') {
-            if (currentSortColumn === 'rank') { /* 排名排序需要在前端处理 */ }
-            else if (currentSortColumn === 'timestamp') query.addAscending('endTime');
-            else if (currentSortColumn === 'totalScore') query.addAscending('totalScore');
-            else if (currentSortColumn === 'scoreRate') query.addAscending('scoreRate');
-            // 其他字段排序...
-        } else {
-            if (currentSortColumn === 'rank') { /* 排名排序需要在前端处理 */ }
-            else if (currentSortColumn === 'timestamp') query.addDescending('endTime');
-            else if (currentSortColumn === 'totalScore') query.addDescending('totalScore');
-            else if (currentSortColumn === 'scoreRate') query.addDescending('scoreRate');
-             // 其他字段排序...
-        }
-        // 默认添加一个次要排序，防止分页时顺序不稳定
-        if (currentSortColumn !== 'endTime') {
-            query.addDescending('endTime');
-        }
+        // --- 应用排序 (用于分页显示) ---
+        applySortingToQuery(displayQuery);
 
-        // --- 应用分页 ---
-        query.limit(recordsPerPage);
-        query.skip((page - 1) * recordsPerPage);
+        // --- 应用分页 (用于分页显示) ---
+        displayQuery.limit(recordsPerPage); // UI table uses 10 per page
+        displayQuery.skip((page - 1) * recordsPerPage);
 
-        // --- 执行查询 ---
-        const results = await query.find();
+        // --- 执行查询 (用于分页显示) ---
+        const results = await displayQuery.find();
 
         // --- 填充表格和分页 ---
-        populateTable(results);
+        populateTable(results); // Update UI table
         setupPagination(totalRecords, page);
+
+        // --- [修改] 后台分批同步所有符合条件的记录到本地存储 ---
+        console.log("开始后台分批同步所有符合条件的记录到本地存储...");
+        syncAllFilteredCloudDataToLocal(); // Call the updated sync function
 
     } catch (error) {
         console.error("从云端加载历史记录失败:", error);
         tableBody.innerHTML = `<tr><td colspan="10" class="text-center text-danger">加载失败: ${error.message}</td></tr>`;
-        document.getElementById('pagination').innerHTML = ''; // 清空分页
+        document.getElementById('pagination').innerHTML = '';
     }
 }
 
-// **** 修改：填充表格数据 (使用云端对象) ****
+// **** 修改：构建基础 Assessment 查询 (改为 async) ****
+async function buildAssessmentQuery() {
+    const query = new AV.Query('Assessment');
+    query.include('userPointer');
+
+    // --- 应用筛选条件 ---
+    if (currentFilters.startDate) {
+        query.greaterThanOrEqualTo('startTime', new Date(currentFilters.startDate + 'T00:00:00.000Z'));
+    }
+    if (currentFilters.endDate) {
+        const endDate = new Date(currentFilters.endDate + 'T00:00:00.000Z');
+        endDate.setDate(endDate.getDate() + 1);
+        query.lessThan('startTime', endDate);
+    }
+    if (currentFilters.position) {
+        query.equalTo('positionCode', currentFilters.position);
+    }
+
+    // --- 处理用户搜索 (异步) ---
+    if (currentFilters.searchText) {
+        try {
+            const nameQuery = new AV.Query('UserProfile');
+            nameQuery.contains('name', currentFilters.searchText);
+            const employeeIdQuery = new AV.Query('UserProfile');
+            const searchId = parseInt(currentFilters.searchText, 10);
+            if (!isNaN(searchId)) {
+                employeeIdQuery.equalTo('employeeId', searchId);
+            } else {
+                 employeeIdQuery.equalTo('employeeId', -9999); // 使工号查询无结果
+            }
+            const userQuery = AV.Query.or(nameQuery, employeeIdQuery);
+            userQuery.select('objectId'); // 只需要用户的 objectId
+            const users = await userQuery.find();
+
+            if (users.length > 0) {
+                 query.containedIn('userPointer', users); // users 是包含指针的对象数组
+            } else {
+                  query.equalTo('objectId', '__NEVER_MATCH__'); // 没有匹配的用户
+            }
+        } catch (error) {
+             console.error("搜索用户失败:", error);
+             query.equalTo('objectId', '__NEVER_MATCH__'); // 出错时使查询无结果
+        }
+    }
+    return query;
+}
+
+// **** 新增：应用排序到查询对象 (无修改) ****
+function applySortingToQuery(query) {
+    const sortMap = {
+        timestamp: 'startTime',
+        totalScore: 'totalScore',
+        scoreRate: 'scoreRate',
+    };
+    const sortField = sortMap[currentSortColumn];
+
+    if (sortField) {
+        if (currentSortOrder === 'asc') {
+            query.addAscending(sortField);
+        } else {
+            query.addDescending(sortField);
+        }
+    } else if (currentSortColumn !== 'rank') {
+         query.addDescending('startTime');
+    }
+    if (currentSortColumn !== 'timestamp') {
+         query.addDescending('startTime');
+    }
+}
+
+// **** 修改：后台分批同步所有过滤后的云端数据到本地 ****
+async function syncAllFilteredCloudDataToLocal() {
+    const batchSize = 20; // <--- 每批次同步的数量
+    const maxSyncRecords = 500; // 同步的总数上限
+    let allAssessmentRecords = [];
+    let skip = 0;
+    let fetchedInLastBatch = 0;
+
+    console.log(`[syncLocal] Starting batch sync. Batch size: ${batchSize}, Max records: ${maxSyncRecords}`);
+
+    try {
+        // 循环分批获取 Assessment 数据
+        do {
+            const batchQuery = await buildAssessmentQuery(); // 获取带筛选条件的查询
+            applySortingToQuery(batchQuery); // 应用排序
+            batchQuery.limit(batchSize);
+            batchQuery.skip(skip);
+            batchQuery.include('userPointer');
+
+            const batchResults = await batchQuery.find();
+            fetchedInLastBatch = batchResults.length;
+            allAssessmentRecords = allAssessmentRecords.concat(batchResults);
+            skip += fetchedInLastBatch;
+
+            console.log(`[syncLocal] Fetched batch: ${fetchedInLastBatch} records. Total fetched: ${allAssessmentRecords.length}`);
+
+            if (allAssessmentRecords.length >= maxSyncRecords) {
+                console.warn(`[syncLocal] Reached max sync limit (${maxSyncRecords}). Stopping fetch.`);
+                allAssessmentRecords = allAssessmentRecords.slice(0, maxSyncRecords); // 截取
+                break;
+            }
+
+        } while (fetchedInLastBatch === batchSize); // 如果上一批刚好满，则可能还有更多
+
+        console.log(`[syncLocal] Finished fetching Assessments. Total: ${allAssessmentRecords.length}. Now fetching details...`);
+
+        if (allAssessmentRecords.length === 0) {
+            localStorage.setItem('assessmentHistory', JSON.stringify([]));
+            console.log("[syncLocal] No matching records found in cloud. Local assessmentHistory cleared.");
+            return;
+        }
+
+        // 获取所有关联的 AssessmentDetail (一次性获取，因为SDK限制)
+        // 注意：如果 assessmentPointers 数量很大（如 > 100），这可能需要进一步分批
+        let allDetails = [];
+        if (allAssessmentRecords.length > 0) {
+            const assessmentPointers = allAssessmentRecords.map(record => AV.Object.createWithoutData('Assessment', record.id));
+            const detailQuery = new AV.Query('AssessmentDetail');
+            detailQuery.containedIn('assessmentPointer', assessmentPointers);
+            detailQuery.include('assessmentPointer');
+            detailQuery.limit(1000); // Detail 数量上限 (通常足够)
+            allDetails = await detailQuery.find();
+        }
+
+
+        // 将 Details 按 Assessment ID 分组
+        const detailsByAssessmentId = allDetails.reduce((acc, detail) => {
+            const assessmentId = detail.get('assessmentPointer')?.id;
+            if (assessmentId) {
+                if (!acc[assessmentId]) acc[assessmentId] = [];
+                acc[assessmentId].push(detail);
+            }
+            return acc;
+        }, {});
+        console.log(`[syncLocal] Fetched ${allDetails.length} related AssessmentDetail records.`);
+
+        // 格式化数据并存入 localStorage
+        const formattedHistory = [];
+        for (const record of allAssessmentRecords) {
+            const userInfo = record.get('userPointer');
+            const details = detailsByAssessmentId[record.id] || [];
+
+            const localRecord = {
+                id: record.id,
+                userInfo: userInfo ? {
+                    name: userInfo.get('name'),
+                    employeeId: userInfo.get('employeeId'),
+                    station: userInfo.get('stationCode'),
+                    position: record.get('positionCode'),
+                    positionName: getPositionName(record.get('positionCode')),
+                } : {},
+                position: record.get('positionCode'),
+                assessor: record.get('assessorName'),
+                timestamp: record.get('endTime')?.toISOString(),
+                startTime: record.get('startTime')?.toISOString(),
+                duration: record.get('durationMinutes'),
+                score: {
+                    totalScore: record.get('totalScore'),
+                    maxScore: record.get('maxPossibleScore'),
+                    scoreRate: record.get('scoreRate'),
+                },
+                 questions: details.map(d => ({
+                     id: d.get('questionOriginId') || d.id,
+                     content: d.get('questionContent'),
+                     standardScore: d.get('standardScore'),
+                     standardAnswer: d.get('standardAnswer'),
+                     section: d.get('section'),
+                     type: d.get('questionType'),
+                     knowledgeSource: d.get('knowledgeSource')
+                 })),
+                answers: details.reduce((acc, d) => {
+                    const qId = d.get('questionOriginId') || d.id;
+                    acc[qId] = {
+                        score: d.get('score'),
+                        comment: d.get('comment'),
+                        startTime: null,
+                        duration: d.get('durationSeconds'),
+                    };
+                    return acc;
+                }, {}),
+                status: record.get('status'),
+                elapsedSeconds: record.get('elapsedSeconds'),
+                currentQuestionIndex: record.get('currentQuestionIndex'),
+                totalActiveSeconds: record.get('totalActiveSeconds'),
+            };
+             formattedHistory.push(localRecord);
+        }
+
+        localStorage.setItem('assessmentHistory', JSON.stringify(formattedHistory));
+        console.log(`[syncLocal] Sync complete. ${formattedHistory.length} records saved to local assessmentHistory.`);
+
+    } catch (error) {
+        console.error("[syncLocal] Background sync to local storage failed:", error);
+    }
+}
+
+// **** 修改：填充表格数据 (显示 startTime, 处理 paused/failed 状态) ****
 function populateTable(records) {
     const tableBody = document.getElementById('historyTableBody');
-    tableBody.innerHTML = ''; // 清空
+    tableBody.innerHTML = '';
 
-    if (records.length === 0) {
+    if (!records || records.length === 0) {
         tableBody.innerHTML = '<tr><td colspan="10" class="text-center text-muted">未找到符合条件的记录。</td></tr>';
         return;
     }
 
-    // 如果需要按分数排名，可以在这里对 records 排序
+    // 前端排名逻辑 (如果按 rank 排序)
     if (currentSortColumn === 'rank') {
         records.sort((a, b) => {
             const scoreA = a.get('totalScore') || 0;
             const scoreB = b.get('totalScore') || 0;
-            // 降序排列
             return currentSortOrder === 'desc' ? scoreB - scoreA : scoreA - scoreB;
         });
     }
 
     records.forEach((record, index) => {
-        const rank = (currentPage - 1) * recordsPerPage + index + 1; // 计算序号/排名
-        const assessmentTime = formatDate(record.get('endTime'), true);
+        const rank = (currentPage - 1) * recordsPerPage + index + 1;
+        const assessmentStartTime = formatDate(record.get('startTime'), true); // 使用 startTime
         const userInfo = record.get('userPointer');
         const name = userInfo ? userInfo.get('name') : 'N/A';
         const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
         const position = getPositionName(record.get('positionCode'));
-        const totalScore = record.get('totalScore') !== undefined ? record.get('totalScore') : 'N/A';
-        const scoreRate = record.get('scoreRate') !== undefined ? `${record.get('scoreRate')}%` : 'N/A';
+        const recordStatus = record.get('status'); // 获取状态
+        const isPaused = recordStatus === 'paused';
+        const isFailed = recordStatus === 'failed_to_submit';
+
+        // 如果是 paused 或 failed，分数显示 --
+        const totalScore = (isPaused || isFailed) ? '--' : (record.get('totalScore') !== undefined ? record.get('totalScore') : 'N/A');
+        const scoreRate = (isPaused || isFailed) ? '--' : (record.get('scoreRate') !== undefined ? `${record.get('scoreRate')}%` : 'N/A');
 
         let durationText = 'N/A';
         const totalSeconds = record.get('totalActiveSeconds');
         if (totalSeconds !== undefined && totalSeconds !== null) {
-                const minutes = Math.floor(totalSeconds / 60);
-                const seconds = totalSeconds % 60;
-                durationText = `${minutes}分`;
-           if (seconds > 0) durationText += ` ${seconds}秒`;
+            const minutes = Math.floor(totalSeconds / 60);
+            const seconds = totalSeconds % 60;
+            durationText = `${minutes}分`;
+            if (seconds > 0) durationText += ` ${seconds}秒`;
         } else {
+            // Fallback to durationMinutes if active seconds not available
             const minutes = record.get('durationMinutes');
             if (minutes !== undefined && minutes !== null) durationText = `${minutes}分钟`;
         }
@@ -243,8 +384,8 @@ function populateTable(records) {
         const tr = document.createElement('tr');
         tr.innerHTML = `
             <td>${rank}</td>
-            <td>${currentSortColumn === 'rank' ? rank : '-'}</td> <!-- 只有按排名排序时显示 -->
-            <td>${assessmentTime}</td>
+            <td>${currentSortColumn === 'rank' ? rank : '-'}</td>
+            <td>${assessmentStartTime}</td>
             <td>${name}</td>
             <td>${employeeId}</td>
             <td>${position}</td>
@@ -254,15 +395,15 @@ function populateTable(records) {
             <td>
                 <button class="btn btn-sm btn-outline-primary history-action-btn" onclick="viewDetail('${record.id}')">详情</button>
                 <button class="btn btn-sm btn-outline-danger history-action-btn" onclick="deleteRecord('${record.id}', this)">删除</button>
-                <!-- 可以添加"继续测评"按钮（如果状态是 paused） -->
-                ${record.get('status') === 'paused' ? `<button class="btn btn-sm btn-outline-warning history-action-btn" onclick="resumeAssessment('${record.id}')">继续</button>` : ''}
+                ${isPaused ? `<button class="btn btn-sm btn-outline-warning history-action-btn" onclick="resumeAssessment('${record.id}')">继续</button>` : ''}
+                ${isFailed ? `<button class="btn btn-sm btn-outline-success history-action-btn" onclick="retrySubmit('${record.id}', this)">重试提交</button>` : ''}
             </td>
         `;
         tableBody.appendChild(tr);
     });
 }
 
-// **** 修改：设置分页 (逻辑基本不变，但使用 totalRecords) ****
+// **** 设置分页 ****
 function setupPagination(totalItems, currentPage) {
     const paginationElement = document.getElementById('pagination');
     paginationElement.innerHTML = ''; // 清空
@@ -329,29 +470,30 @@ function setupPagination(totalItems, currentPage) {
     paginationElement.appendChild(nextLi);
 }
 
-// **** 修改：查看详情 (从云端加载，或者如果已有数据则复用) ****
+// **** 修改：查看详情 (处理云端数据) ****
 async function viewDetail(assessmentId) {
     const detailModalBody = document.getElementById('detailModalBody');
     detailModalBody.innerHTML = '<p class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 加载详情中...</p>';
-    const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
+    // Ensure modal exists before trying to show
+    const detailModalElement = document.getElementById('detailModal');
+    if (!detailModalElement) {
+        console.error("Detail modal element not found!");
+        detailModalBody.innerHTML = '<p class="text-danger text-center">错误：详情模态框未找到。</p>';
+        return;
+    }
+    const detailModal = new bootstrap.Modal(detailModalElement);
     detailModal.show();
 
     try {
-        // 尝试从已加载的当前页数据中查找
-        let assessment;
-        if (currentCloudAssessment && currentCloudAssessment.id === assessmentId) {
-             assessment = currentCloudAssessment; // 如果是当前结果页的记录
-        } else {
-            // 否则，需要重新查询
-            const query = new AV.Query('Assessment');
-            query.include('userPointer');
-            assessment = await query.get(assessmentId);
-        }
+        // 直接从云端查询，不依赖 currentCloudAssessment 或内存中的数据
+        const query = new AV.Query('Assessment');
+        query.include('userPointer');
+        const assessment = await query.get(assessmentId);
 
         // 查询关联的 AssessmentDetail
         const detailQuery = new AV.Query('AssessmentDetail');
         detailQuery.equalTo('assessmentPointer', assessment);
-        detailQuery.limit(1000);
+        detailQuery.limit(1000); // Assume max 1000 questions per assessment
         const details = await detailQuery.find();
 
         // 构建详情 HTML
@@ -360,7 +502,7 @@ async function viewDetail(assessmentId) {
 
     } catch (error) {
         console.error("加载详情失败:", error);
-        detailModalBody.innerHTML = `<p class="text-danger text-center">加载详情失败: ${error.message}</p>`;
+        detailModalBody.innerHTML = `<p class="text-danger text-center">加载详情失败: ${error.message || '未知错误'}</p>`;
     }
 }
 
@@ -373,21 +515,45 @@ function buildDetailHtml(assessment, details) {
     const position = getPositionName(assessment.get('positionCode'));
     const assessor = assessment.get('assessorName') || 'N/A';
     const endTime = formatDate(assessment.get('endTime'), true);
+    const startTime = formatDate(assessment.get('startTime'), true);
     const totalScore = assessment.get('totalScore') !== undefined ? assessment.get('totalScore') : 'N/A';
     const maxScore = assessment.get('maxPossibleScore') !== undefined ? assessment.get('maxPossibleScore') : 'N/A';
     const scoreRate = assessment.get('scoreRate') !== undefined ? `${assessment.get('scoreRate')}%` : 'N/A';
+    // **** Translate Status ****
+    const statusRaw = assessment.get('status') || 'unknown';
+    let statusText = statusRaw;
+    let statusBadgeClass = 'bg-secondary';
+    switch (statusRaw) {
+        case 'completed':
+            statusText = '已完成';
+            statusBadgeClass = 'bg-success';
+            break;
+        case 'paused':
+            statusText = '已暂停';
+            statusBadgeClass = 'bg-warning text-dark'; // Dark text for better contrast on yellow
+            break;
+        case 'failed_to_submit':
+            statusText = '提交失败';
+            statusBadgeClass = 'bg-danger';
+            break;
+        case 'in_progress':
+            statusText = '进行中';
+            statusBadgeClass = 'bg-info text-dark'; // Dark text for better contrast on light blue
+            break;
+        default:
+            statusText = '未知';
+            statusBadgeClass = 'bg-secondary';
+    }
 
     let durationText = 'N/A';
-    // ... (时长计算逻辑同 populateTable) ...
      const totalSeconds = assessment.get('totalActiveSeconds');
      if (totalSeconds !== undefined && totalSeconds !== null) {
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
-        durationText = `${minutes}分`;
-        if (seconds > 0) durationText += ` ${seconds}秒`;
+        durationText = `${minutes}分 ${seconds}秒`;
      } else {
-         const minutes = assessment.get('durationMinutes');
-         if (minutes !== undefined && minutes !== null) durationText = `${minutes}分钟`;
+          const minutes = assessment.get('durationMinutes');
+          if (minutes !== undefined && minutes !== null) durationText = `${minutes}分钟`;
      }
 
     let tableHtml = `
@@ -398,40 +564,48 @@ function buildDetailHtml(assessment, details) {
             <div class="col-md-6"><strong>车站:</strong> ${station}</div>
             <div class="col-md-6"><strong>岗位:</strong> ${position}</div>
             <div class="col-md-6"><strong>测评人:</strong> ${assessor}</div>
-            <div class="col-md-6"><strong>测评时间:</strong> ${endTime}</div>
+            <div class="col-md-6"><strong>开始时间:</strong> ${startTime}</div>
+            <div class="col-md-6"><strong>完成时间:</strong> ${endTime}</div>
             <div class="col-md-6"><strong>测评用时:</strong> ${durationText}</div>
-                </div>
+            <div class="col-md-6"><strong>状态:</strong> <span class="badge ${statusBadgeClass}">${statusText}</span></div>
+        </div>
         <h6>得分信息</h6>
         <div class="row mb-3">
             <div class="col-md-4"><strong>总分:</strong> ${totalScore}</div>
             <div class="col-md-4"><strong>标准分:</strong> ${maxScore}</div>
             <div class="col-md-4"><strong>得分率:</strong> ${scoreRate}</div>
-                </div>
+        </div>
         <h6>题目详情</h6>
         <table class="table table-sm table-bordered mt-2">
-                    <thead>
-            <tr><th>序号</th><th>题目内容</th><th>标准分</th><th>得分</th><th>用时(秒)</th><th>备注</th></tr>
-                    </thead>
-          <tbody>
+            <thead>
+                <tr><th>序号</th><th>题目内容</th><th>标准分</th><th>得分</th><th>用时(秒)</th><th>备注</th></tr>
+            </thead>
+            <tbody>
     `;
 
     if (details && details.length > 0) {
+        // Sort details based on their order if available, otherwise keep fetched order
+        details.sort((a, b) => (a.get('questionOrder') || 0) - (b.get('questionOrder') || 0));
+
         details.forEach((detail, index) => {
             const qContent = detail.get('questionContent') || '';
-            const stdScore = detail.get('standardScore') !== undefined ? detail.get('standardScore') : 'N/A';
-            const score = detail.get('score') !== null && detail.get('score') !== undefined ? detail.get('score') : '未评分';
-            const duration = detail.get('durationSeconds') !== undefined ? detail.get('durationSeconds') : 'N/A';
+            // Ensure score is a number before formatting
+             const scoreRaw = detail.get('score');
+             const score = (scoreRaw !== null && scoreRaw !== undefined && !isNaN(scoreRaw)) ? Number(scoreRaw) : '未评分';
+             const stdScore = detail.get('standardScore') !== undefined ? detail.get('standardScore') : 'N/A';
+             const duration = detail.get('durationSeconds') !== undefined ? detail.get('durationSeconds') : 'N/A';
             const comment = detail.get('comment') || '无';
+
             tableHtml += `
                 <tr>
-                <td>${index + 1}</td>
-                  <td>${qContent}</td>
-                  <td>${stdScore}</td>
-                  <td>${score}</td>
-                <td>${duration}</td> 
-                  <td>${comment}</td>
-            </tr>
-        `;
+                    <td>${index + 1}</td>
+                    <td>${qContent}</td>
+                    <td>${stdScore}</td>
+                    <td>${score}</td>
+                    <td>${duration}</td>
+                    <td>${comment}</td>
+                </tr>
+            `;
         });
     } else {
         tableHtml += '<tr><td colspan="6" class="text-center text-muted">无题目详情数据</td></tr>';
@@ -441,32 +615,50 @@ function buildDetailHtml(assessment, details) {
     return tableHtml;
 }
 
-
 // **** 修改：删除记录 (从云端删除) ****
 async function deleteRecord(assessmentId, buttonElement) {
     if (!confirm(`确定要从云端永久删除这条记录 (ID: ${assessmentId}) 吗？此操作无法撤销。`)) {
         return;
     }
 
-    try {
-        const assessment = AV.Object.createWithoutData('Assessment', assessmentId);
-        // 可选：先查询关联的 AssessmentDetail 并删除，或者设置级联删除规则
-        // 这里简化处理，假设只删除 Assessment 记录
-        await assessment.destroy({ useMasterKey: true }); // 使用 MasterKey 确保权限
+    // Disable button to prevent double clicks
+    if (buttonElement) buttonElement.disabled = true;
 
-        // 从表格中移除行 (视觉效果)
-        const row = buttonElement.closest('tr');
-        if (row) {
-            row.remove();
+    try {
+        // First, query and delete related AssessmentDetail records
+        const detailQuery = new AV.Query('AssessmentDetail');
+        detailQuery.equalTo('assessmentPointer', AV.Object.createWithoutData('Assessment', assessmentId));
+        detailQuery.limit(1000); // Set a limit
+        const detailsToDelete = await detailQuery.find();
+
+        if (detailsToDelete.length > 0) {
+            console.log(`Deleting ${detailsToDelete.length} related AssessmentDetail records...`);
+             // Use destroyAll for efficiency if possible, otherwise loop
+             // Note: destroyAll might have limits, loop is safer for large numbers
+             for (const detail of detailsToDelete) {
+                 await detail.destroy({ useMasterKey: true }); // Use MasterKey if needed
+             }
+            // await AV.Object.destroyAll(detailsToDelete, { useMasterKey: true });
+            console.log("Related AssessmentDetail records deleted.");
         }
-        alert('记录已从云端删除。');
-        // 可能需要重新加载当前页或更新总数
-        totalRecords--; // 简单更新总数
-        setupPagination(totalRecords, currentPage);
+
+        // Then, delete the main Assessment record
+        const assessment = AV.Object.createWithoutData('Assessment', assessmentId);
+        await assessment.destroy({ useMasterKey: true }); // Use MasterKey if needed
+
+        alert('记录及其详情已从云端删除。');
+
+        // Refresh the current page data
+        loadHistoryFromCloud(currentPage); // Reload to reflect deletion and update pagination
+
+        // Also, update the local storage sync in the background
+        syncAllFilteredCloudDataToLocal();
 
     } catch (error) {
         console.error(`删除记录 (ID: ${assessmentId}) 失败:`, error);
         alert(`删除记录失败: ${error.message}`);
+        // Re-enable button if deletion failed
+        if (buttonElement) buttonElement.disabled = false;
     }
 }
 
@@ -515,53 +707,298 @@ function exportHistoryList() {
 
 // **** 导出历史记录 (Excel) 功能 (需要修改为查询云端所有数据) ****
 async function exportFullHistoryToExcel() {
-    alert("正在准备导出所有历史记录，数据量大时可能需要一些时间...");
-    // 这个函数需要重新实现：
-    // 1. 构建一个查询，获取所有符合筛选条件的 Assessment 记录（可能需要分批获取）
-    // 2. 对每条 Assessment 记录，查询其关联的 AssessmentDetail 记录
-    // 3. 将所有数据整理成适合 Excel 的格式（可能包含多个 Sheet）
-    // 4. 使用 XLSX 库生成并下载 Excel 文件
-    console.warn("导出完整历史记录功能尚未完全实现云端查询逻辑。");
-    // 临时方案：只导出当前页数据（如果需要）
-    // exportHistoryList();
+    alert("正在准备导出所有符合当前筛选条件的记录，数据量大时可能需要一些时间...");
+    const exportButton = document.getElementById('exportHistoryBtn');
+    if(exportButton) {
+        exportButton.disabled = true;
+        exportButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 导出中...';
+    }
+
+    try {
+        const maxExportLimit = 500; // Set a practical limit for full export
+        const allRecords = [];
+        const allRecordDetails = {}; // Store details by assessment ID
+        let skip = 0;
+        const batchSize = 50; // Use a reasonable batch size for fetching
+
+        // Fetch all Assessment records matching filters (up to limit)
+        while (allRecords.length < maxExportLimit) {
+            const query = await buildAssessmentQuery();
+            applySortingToQuery(query); // Apply current sorting
+            query.limit(batchSize);
+            query.skip(skip);
+            query.include('userPointer');
+            const batchResults = await query.find();
+
+            if (batchResults.length === 0) {
+                break; // No more records
+            }
+            allRecords.push(...batchResults);
+            skip += batchResults.length;
+
+            if (batchResults.length < batchSize) {
+                break; // Last batch was not full
+            }
+        }
+
+        if (allRecords.length === 0) {
+             alert("没有找到符合当前筛选条件的记录可导出。");
+             return;
+        }
+        if (allRecords.length >= maxExportLimit) {
+             alert(`导出记录数已达上限 (${maxExportLimit})。如果需要导出更多记录，请调整筛选条件。`);
+        }
+
+        console.log(`Exporting ${allRecords.length} assessment records.`);
+
+        // Fetch all related AssessmentDetails (might need batching for large datasets)
+        const assessmentPointers = allRecords.map(r => AV.Object.createWithoutData('Assessment', r.id));
+        // Batch detail fetching if many assessments
+        const detailBatchSize = 100; // How many assessments' details to fetch per query
+        for (let i = 0; i < assessmentPointers.length; i += detailBatchSize) {
+            const batchPointers = assessmentPointers.slice(i, i + detailBatchSize);
+            if (batchPointers.length > 0) {
+                 const detailQuery = new AV.Query('AssessmentDetail');
+                 detailQuery.containedIn('assessmentPointer', batchPointers);
+                 detailQuery.include('assessmentPointer');
+                 detailQuery.limit(1000); // Max details per batch of assessments
+                 const batchDetails = await detailQuery.find();
+                 batchDetails.forEach(detail => {
+                    const assessmentId = detail.get('assessmentPointer')?.id;
+                    if (assessmentId) {
+                        if (!allRecordDetails[assessmentId]) allRecordDetails[assessmentId] = [];
+                         allRecordDetails[assessmentId].push(detail);
+                    }
+                 });
+                 console.log(`Fetched details for assessments ${i} to ${Math.min(i + detailBatchSize, assessmentPointers.length)}...`);
+            }
+        }
+
+
+        // Prepare data for Excel sheets
+        const summaryData = [
+             ['序号', '开始时间', '姓名', '工号', '岗位', '测评用时', '总分', '得分率', '状态', '测评人', '云端ID'] // Headers
+        ];
+        const detailSheetsData = {}; // { assessmentId: [ [headers], [row1], [row2]... ] }
+
+        allRecords.forEach((record, index) => {
+            const userInfo = record.get('userPointer');
+            const name = userInfo ? userInfo.get('name') : 'N/A';
+            const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
+            const position = getPositionName(record.get('positionCode'));
+            const startTime = formatDate(record.get('startTime'), true);
+            const totalScore = record.get('totalScore') ?? 'N/A';
+            const scoreRate = record.get('scoreRate') !== undefined ? `${record.get('scoreRate')}%` : 'N/A';
+            const status = record.get('status') || 'N/A';
+            const assessor = record.get('assessorName') || 'N/A';
+            const recordId = record.id;
+
+             let durationText = 'N/A';
+             const totalSeconds = record.get('totalActiveSeconds');
+             if (totalSeconds !== undefined && totalSeconds !== null) {
+                 const minutes = Math.floor(totalSeconds / 60);
+                 const seconds = totalSeconds % 60;
+                 durationText = `${minutes}分 ${seconds}秒`;
+             } else {
+                  const minutes = record.get('durationMinutes');
+                  if (minutes !== undefined && minutes !== null) durationText = `${minutes}分钟`;
+             }
+
+            // Add to summary sheet
+            summaryData.push([
+                 index + 1, startTime, name, employeeId, position, durationText, totalScore, scoreRate, status, assessor, recordId
+            ]);
+
+            // Prepare detail sheet for this record
+            const details = allRecordDetails[record.id] || [];
+            const sheetName = `详情_${name}_${recordId.substring(0, 6)}`; // Create a unique sheet name
+            const detailData = [
+                 ['题号', '题目内容', '标准分', '得分', '用时(秒)', '备注', '标准答案', '知识来源', '模块', '题目类型', '原始题目ID'] // Headers
+            ];
+             details.sort((a, b) => (a.get('questionOrder') || 0) - (b.get('questionOrder') || 0));
+             details.forEach((d, qIndex) => {
+                 const scoreRaw = d.get('score');
+                 const score = (scoreRaw !== null && scoreRaw !== undefined && !isNaN(scoreRaw)) ? Number(scoreRaw) : '未评分';
+                 detailData.push([
+                     qIndex + 1,
+                     d.get('questionContent') || '',
+                     d.get('standardScore') ?? 'N/A',
+                     score,
+                     d.get('durationSeconds') ?? 'N/A',
+                     d.get('comment') || '',
+                     d.get('standardAnswer') || '',
+                     d.get('knowledgeSource') || '',
+                     d.get('section') || '',
+                     d.get('questionType') || '',
+                     d.get('questionOriginId') || d.id
+                 ]);
+             });
+             detailSheetsData[sheetName] = detailData;
+        });
+
+        // Create workbook and sheets
+        const workbook = XLSX.utils.book_new();
+        const summarySheet = XLSX.utils.aoa_to_sheet(summaryData);
+        XLSX.utils.book_append_sheet(workbook, summarySheet, '测评记录总览');
+
+        // Add detail sheets
+        for (const sheetName in detailSheetsData) {
+             if (Object.hasOwnProperty.call(detailSheetsData, sheetName)) {
+                 const detailSheet = XLSX.utils.aoa_to_sheet(detailSheetsData[sheetName]);
+                 // Basic auto column width (might need adjustments)
+                 const colWidths = [];
+                 detailSheetsData[sheetName][0].forEach((_, colIndex) => {
+                     let maxLen = 10; // Min width
+                     detailSheetsData[sheetName].forEach(row => {
+                        const cellValue = row[colIndex];
+                        if (cellValue != null) {
+                             const cellLen = String(cellValue).length;
+                             if (cellLen > maxLen) maxLen = cellLen;
+                        }
+                     });
+                     colWidths.push({ wch: Math.min(maxLen + 2, 50) }); // Add padding, max width 50
+                 });
+                 detailSheet['!cols'] = colWidths;
+
+                 XLSX.utils.book_append_sheet(workbook, detailSheet, sheetName.replace(/[/\\?*[\]]/g, '_')); // Sanitize sheet name
+             }
+        }
+
+        // Generate and download file
+        const filename = `测评历史记录_${formatDate(new Date())}.xlsx`;
+        XLSX.writeFile(workbook, filename);
+        alert(`成功导出 ${allRecords.length} 条记录到 ${filename}`);
+
+    } catch (error) {
+        console.error("导出完整历史记录失败:", error);
+        alert(`导出失败: ${error.message}`);
+    } finally {
+         // Re-enable button
+         if(exportButton) {
+             exportButton.disabled = false;
+             exportButton.innerHTML = '导出完整历史(Excel)';
+         }
+    }
 }
-// 绑定导出按钮事件 (如果按钮存在)
+// Bind the export function
 const exportFullBtn = document.getElementById('exportHistoryBtn');
 if (exportFullBtn) {
     exportFullBtn.onclick = exportFullHistoryToExcel;
 }
 
-// **** 继续测评功能 ****
-function resumeAssessment(assessmentId) {
-     // 这个功能需要重新设计
-     // 原来的逻辑是从 localStorage 加载暂停的数据
-     // 现在需要从云端获取数据，并在 assessment.html 页面加载时恢复状态
-     // 简单实现：跳转到 assessment.html，让它自己处理恢复逻辑（需要 assessment.js 支持）
-     console.warn("继续测评功能需要调整以适配云端数据。");
-     // 示例跳转：
-     // window.location.href = `assessment.html?resumeId=${assessmentId}`;
-     alert("继续测评功能待完善。");
-}
+// **** 修改：继续测评功能 (从云端恢复) ****
+async function resumeAssessment(assessmentId) {
+     console.log(`[resumeAssessment] Attempting to resume assessment from cloud ID: ${assessmentId}`);
+     const resumeButton = event.target; // Get the button that was clicked
+     if (resumeButton) resumeButton.disabled = true; // Disable button temporarily
 
-// **** 导出详情功能 (需要修改为使用云端数据) ****
-function exportDetail() {
-     if (!currentCloudAssessment || !currentCloudDetails) {
-         alert("没有可导出的详情数据。");
-         return;
+     // Check for existing in-progress assessment
+     if (localStorage.getItem('currentAssessment')) {
+         try {
+             const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
+             // Allow overwrite only if the current one is NOT the one we are resuming, AND it's in progress
+             if (currentData.id !== assessmentId && currentData.status === 'in_progress') {
+                  if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
+                      if (resumeButton) resumeButton.disabled = false; // Re-enable button
+                      return; // User cancelled
+                  }
+             }
+             // Allow overwriting if the current one is completed or failed
+             else if (currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
+                // Allow overwrite without confirmation
+             }
+             // Allow overwrite if the current one IS the one we are resuming (e.g., user refreshed history page)
+             else if (currentData.id === assessmentId) {
+                 // Allow overwrite without confirmation
+             }
+
+         } catch (e) {
+             console.warn("Error parsing currentAssessment, proceeding with resume.", e);
+             // If parsing fails, assume it's safe to overwrite
+         }
      }
-     // 这个函数需要重新实现：
-     // 1. 使用 currentCloudAssessment 和 currentCloudDetails 中的数据
-     // 2. 将数据整理成适合 Excel 的格式
-     // 3. 使用 XLSX 库生成并下载 Excel 文件
-     console.warn("导出详情功能尚未完全实现云端数据导出逻辑。");
-     alert("导出详情功能待完善。");
+
+     try {
+         // 1. Fetch Assessment from cloud
+         const query = new AV.Query('Assessment');
+         query.include('userPointer');
+         const assessmentRecord = await query.get(assessmentId);
+
+         if (!assessmentRecord || assessmentRecord.get('status') !== 'paused') {
+             alert("无法继续测评：未找到对应的暂停记录或记录状态不正确。请刷新列表重试。");
+             loadHistoryFromCloud(currentPage); // Refresh list
+             if (resumeButton) resumeButton.disabled = false;
+             return;
+         }
+
+         // 2. Fetch related AssessmentDetails
+         const detailQuery = new AV.Query('AssessmentDetail');
+         detailQuery.equalTo('assessmentPointer', assessmentRecord);
+         detailQuery.limit(1000);
+         const details = await detailQuery.find();
+
+         // 3. Build the structure needed by assessment.js
+         const userInfo = assessmentRecord.get('userPointer');
+         const assessmentToResume = {
+              id: assessmentRecord.id,
+              userInfo: userInfo ? {
+                 name: userInfo.get('name'),
+                 employeeId: userInfo.get('employeeId'),
+                 station: userInfo.get('stationCode'),
+                 position: assessmentRecord.get('positionCode'),
+                 positionName: getPositionName(assessmentRecord.get('positionCode')),
+              } : {},
+              position: assessmentRecord.get('positionCode'),
+              questions: details.map(d => ({
+                  id: d.get('questionOriginId') || d.id,
+                  content: d.get('questionContent'),
+                  standardScore: d.get('standardScore'),
+                  standardAnswer: d.get('standardAnswer'),
+                  section: d.get('section'),
+                  type: d.get('questionType'),
+                  knowledgeSource: d.get('knowledgeSource')
+              })).sort((a,b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999)), // Add sorting if orderIndex exists
+              answers: details.reduce((acc, d) => {
+                  const qId = d.get('questionOriginId') || d.id;
+                  acc[qId] = {
+                      score: d.get('score'), // Load existing score
+                      comment: d.get('comment') || '', // Load existing comment
+                      startTime: null, // Reset startTime on resume
+                      duration: Number(d.get('durationSeconds')) || 0, // Load accumulated duration
+                  };
+                  return acc;
+              }, {}),
+              startTime: assessmentRecord.get('startTime')?.toISOString(),
+              status: 'in_progress', // <<< Set status to in_progress for assessment page
+              elapsedSeconds: Number(assessmentRecord.get('elapsedSeconds')) || 0,
+              currentQuestionIndex: Number(assessmentRecord.get('currentQuestionIndex')) || 0,
+              totalActiveSeconds: Number(assessmentRecord.get('totalActiveSeconds')) || 0,
+              assessor: assessmentRecord.get('assessorName') // Load assessor if exists
+         };
+
+          // 4. Save to localStorage['currentAssessment']
+          localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
+
+         // 5. (Optional but recommended) Update cloud status?
+         // Mark the cloud record as 'resumed' or delete the 'paused' state?
+         // Let's just leave it as 'paused' in the cloud for simplicity. If they pause again, it will be overwritten.
+
+         // 6. Redirect to assessment page
+         console.log("[resumeAssessment] Paused assessment data loaded to currentAssessment. Redirecting...");
+         window.location.href = 'assessment.html';
+
+     } catch (error) {
+          console.error(`[resumeAssessment] Error resuming assessment ID ${assessmentId}:`, error);
+          alert(`继续测评失败: ${error.message}`);
+          if (resumeButton) resumeButton.disabled = false; // Re-enable on error
+     }
 }
 
 // **** 新增：检查本地暂存/失败的记录 ****
 function checkLocalRecords() {
     console.log("[checkLocalRecords] 开始检查本地记录...");
     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    localUnsyncedRecords = history.filter(record =>
+    localUnsyncedRecords = history.filter(record => 
         record.status === 'paused' || record.status === 'failed_to_submit'
     );
     console.log(`[checkLocalRecords] 找到 ${localUnsyncedRecords.length} 条未同步记录。`);
@@ -575,19 +1012,11 @@ function checkLocalRecords() {
         // 插入到筛选区域下方，表格上方
         const filterSection = document.querySelector('.filter-section');
         const tableContainer = document.querySelector('.table-responsive');
-        const historyContainer = document.querySelector('.container'); // Fallback container
-
         if (filterSection && tableContainer) {
-             // Insert before the table container
-             filterSection.parentNode.insertBefore(localRecordsContainer, tableContainer);
-        } else if (historyContainer) {
-            // Fallback: 插入到 container 顶部 or a known element
-            const firstChild = historyContainer.firstChild;
-            historyContainer.insertBefore(localRecordsContainer, firstChild);
+             filterSection.insertBefore(localRecordsContainer, tableContainer);
         } else {
-            console.error("Could not find a suitable place to insert local records display area.");
-            // As a last resort, append to body, though this might break layout
-            document.body.appendChild(localRecordsContainer);
+            // Fallback: 插入到 container 顶部
+            document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
         }
     }
 
@@ -597,49 +1026,35 @@ function checkLocalRecords() {
     if (localUnsyncedRecords.length === 0) {
         localRecordsContainer.innerHTML = '<p class="text-center text-muted mb-0"><i class="bi bi-check-circle me-1"></i> 没有找到本地暂存或提交失败的测评记录。</p>';
         } else {
-        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group list-group-flush">' // Use list-group-flush
+        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">'
         localUnsyncedRecords.forEach((record, index) => {
-            // **** 修改：优先使用 startTime ****
-            const displayTime = record.status === 'paused' && record.startTime
-                               ? formatDate(new Date(record.startTime), true)
-                               : formatDate(new Date(record.timestamp || record.startTime || Date.now()), true); // Fallback time
+            const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
             const name = record.userInfo?.name || '未知';
             const position = getPositionName(record.position || record.userInfo?.position);
             let statusBadge = '';
             let actionsHtml = '';
-            // **** 新增：详情按钮 ****
-            const detailButtonHtml = `<button class="btn btn-sm btn-outline-info me-1" onclick="viewLocalDetail('${record.id}')"><i class="bi bi-eye"></i> 详情</button>`;
 
             if (record.status === 'paused') {
                 statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
-                // **** 修改：添加详情按钮 ****
                 actionsHtml = `
-                    ${detailButtonHtml}
                     <button class="btn btn-sm btn-outline-primary me-1" onclick="resumeLocalAssessment('${record.id}')"><i class="bi bi-play-circle"></i> 继续</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
                 `;
             } else if (record.status === 'failed_to_submit') {
                 statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
-                 // **** 修改：添加详情按钮 ****
                 actionsHtml = `
-                     ${detailButtonHtml}
                     <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
                 `;
             }
 
-             // **** 修改：显示 -- 代替分数 ****
-             const scoreDisplay = record.status === 'paused' ? '-- / --' : `${record.score || 0} / ${record.maxScore || '--'}`;
-             const scoreRateDisplay = record.status === 'paused' ? '--' : `${record.scoreRate || 0}%`;
-
             listHtml += `
-                <li class="list-group-item d-flex flex-wrap justify-content-between align-items-center" data-record-id="${record.id}">
-                     <div class="mb-2 mb-md-0 me-md-3"> <!-- Added margin for spacing -->
-                         <strong>${name}</strong> (${position}) ${statusBadge}<br>
-                         <small class="text-muted">时间: ${displayTime}</small><br>
-                         <small class="text-muted">得分: ${scoreDisplay} (${scoreRateDisplay})</small>
-                     </div>
-                    <div class="ms-md-auto"> <!-- Push actions to the right on medium+ screens -->
+                <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
+                    <div>
+                        <strong>${name}</strong> (${position}) ${statusBadge}<br>
+                        <small class="text-muted">时间: ${timestamp}</small>
+                    </div>
+                    <div>
                         ${actionsHtml}
                     </div>
                 </li>
@@ -648,114 +1063,6 @@ function checkLocalRecords() {
         listHtml += '</ul>';
         localRecordsContainer.innerHTML = listHtml;
     }
-}
-
-// **** 新增：查看本地记录详情 ****
-function viewLocalDetail(recordId) {
-    console.log(`[viewLocalDetail] Viewing local detail for ID: ${recordId}`);
-    const record = localUnsyncedRecords.find(r => r.id == recordId); // Use local cache
-
-    const detailModalBody = document.getElementById('detailModalBody');
-    const detailModal = new bootstrap.Modal(document.getElementById('detailModal'));
-
-    if (!record) {
-        detailModalBody.innerHTML = `<p class="text-danger text-center">无法找到 ID 为 ${recordId} 的本地记录详情。</p>`;
-        detailModal.show();
-        return;
-    }
-
-    // 构建详情 HTML (基于 buildDetailHtml 但使用本地数据结构)
-    const userInfo = record.userInfo || {};
-    const name = userInfo.name || 'N/A';
-    const employeeId = userInfo.employeeId || 'N/A';
-    const station = getStationName(userInfo.station) || 'N/A'; // Use getStationName
-    const position = getPositionName(userInfo.position || record.position); // Use getPositionName
-    const assessor = record.assessor || (record.status === 'failed_to_submit' ? '(提交失败时输入)' : '(未完成)');
-    const startTime = record.startTime ? formatDate(new Date(record.startTime), true) : 'N/A';
-    const lastSavedTime = record.timestamp ? formatDate(new Date(record.timestamp), true) : 'N/A';
-    const statusText = record.status === 'paused' ? '暂存中' : '提交失败';
-
-    // 得分信息 (显示 "--" 如果是暂存)
-    const totalScore = record.status === 'paused' ? '--' : (record.score !== undefined && record.score !== null ? record.score : 'N/A');
-    const maxScore = record.maxScore !== undefined ? record.maxScore : 'N/A';
-    const scoreRate = record.status === 'paused' ? '--' : (record.scoreRate !== undefined ? `${record.scoreRate}%` : 'N/A');
-
-    // 用时信息
-        let durationText = 'N/A';
-    const totalSeconds = record.totalActiveSeconds;
-    if (totalSeconds !== undefined && totalSeconds !== null) {
-       const minutes = Math.floor(totalSeconds / 60);
-       const seconds = totalSeconds % 60;
-       durationText = `${minutes}分`;
-       if (seconds > 0) durationText += ` ${seconds}秒`;
-    } else if (record.duration !== undefined && record.duration !== null){ // Fallback to older 'duration' if exists
-       durationText = `${record.duration}分钟`;
-    }
-
-    let tableHtml = `
-        <h6>基本信息 (本地记录)</h6>
-        <div class="row mb-3">
-            <div class="col-md-6"><strong>姓名:</strong> ${name}</div>
-            <div class="col-md-6"><strong>工号:</strong> ${employeeId}</div>
-            <div class="col-md-6"><strong>车站:</strong> ${station}</div>
-            <div class="col-md-6"><strong>岗位:</strong> ${position}</div>
-            <div class="col-md-6"><strong>测评人:</strong> ${assessor}</div>
-            <div class="col-md-6"><strong>开始时间:</strong> ${startTime}</div>
-            <div class="col-md-6"><strong>记录时间:</strong> ${lastSavedTime}</div>
-            <div class="col-md-6"><strong>状态:</strong> ${statusText}</div>
-             <div class="col-md-6"><strong>累计用时:</strong> ${durationText}</div>
-        </div>
-        <h6>得分信息</h6>
-        <div class="row mb-3">
-            <div class="col-md-4"><strong>得分:</strong> ${totalScore}</div>
-            <div class="col-md-4"><strong>标准分:</strong> ${maxScore}</div>
-            <div class="col-md-4"><strong>得分率:</strong> ${scoreRate}</div>
-        </div>
-        ${record.status === 'failed_to_submit' && record.errorInfo ? `
-        <h6>提交失败信息</h6>
-        <div class="alert alert-danger small">
-            <strong>错误代码:</strong> ${record.errorInfo.code || 'N/A'}<br>
-            <strong>错误消息:</strong> ${record.errorInfo.message || 'N/A'}<br>
-            <strong>失败时间:</strong> ${formatDate(new Date(record.errorInfo.timestamp), true) || 'N/A'}
-        </div>
-        ` : ''}
-        <h6>题目详情 (截至记录时间)</h6>
-        <table class="table table-sm table-bordered mt-2">
-          <thead>
-            <tr><th>序号</th><th>题目内容</th><th>标准分</th><th>得分</th><th>用时(秒)</th><th>备注</th></tr>
-          </thead>
-          <tbody>
-    `;
-
-    const questions = record.questions || [];
-    const answers = record.answers || {};
-
-    if (questions.length > 0) {
-        questions.forEach((question, index) => {
-            const answer = answers[question.id] || {};
-            const qContent = question.content || '题目内容丢失';
-            const stdScore = question.standardScore !== undefined ? question.standardScore : 'N/A';
-            const score = (answer.score !== null && answer.score !== undefined) ? answer.score : '未评分';
-            const duration = answer.duration !== undefined ? answer.duration : 'N/A';
-            const comment = answer.comment || '无'; // 确保显示评语
-            tableHtml += `
-                <tr>
-                  <td>${index + 1}</td>
-                  <td class="text-start">${qContent}</td> <!-- Align left -->
-                  <td>${stdScore}</td>
-                  <td>${score}</td>
-                  <td>${duration}</td>
-                  <td class="text-start">${comment}</td> <!-- Align left -->
-                </tr>
-            `;
-        });
-    } else {
-        tableHtml += '<tr><td colspan="6" class="text-center text-muted">无题目详情数据</td></tr>';
-    }
-
-    tableHtml += `</tbody></table>`;
-    detailModalBody.innerHTML = tableHtml;
-    detailModal.show();
 }
 
 // **** 新增：删除本地记录 ****
@@ -792,39 +1099,29 @@ function resumeLocalAssessment(recordIdToResume) {
     const assessmentToResume = history.find(record => record.id == recordIdToResume && record.status === 'paused');
 
     if (assessmentToResume) {
-        // 检查是否有正在进行的测评 (非当前要恢复的)
-        const currentAssessmentRaw = localStorage.getItem('currentAssessment');
-        if (currentAssessmentRaw) {
-             const currentData = JSON.parse(currentAssessmentRaw);
-             // Allow overwriting if current is the same ID or already completed/failed
-             if (currentData.id != recordIdToResume && currentData.status !== 'completed' && currentData.status !== 'failed_to_submit') {
-                  if (!confirm("当前已有另一个正在进行的测评。继续将丢失该测评的进度，确定要继续吗？")) {
+        // 检查是否有正在进行的测评
+        if (localStorage.getItem('currentAssessment')) {
+            const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
+            // 如果当前的就是要恢复的，或者当前的是已提交/失败的，可以直接覆盖
+            if (currentData.id == recordIdToResume || currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
+                 // 可以直接覆盖
+            } else if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
                 return; // 用户取消
-                 }
             }
         }
 
         // 将选中的测评记录存入 currentAssessment
-        // **** 关键：恢复时将状态改回 in_progress ****
-        assessmentToResume.status = 'in_progress';
-        // 清除可能存在的错误信息 (虽然 paused 不应该有)
-        delete assessmentToResume.errorInfo;
         localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
         
         // 从历史记录中移除暂存状态（推荐）
         history = history.filter(record => record.id != recordIdToResume);
         localStorage.setItem('assessmentHistory', JSON.stringify(history));
 
-        console.log("Assessment data loaded into currentAssessment. Redirecting to assessment.html...");
-        // **** 修改：通过 URL 参数传递 ID，让 assessment.js 处理加载 ****
-        // window.location.href = `assessment.html?resumeId=${recordIdToResume}`;
-        // **** 更正：上面的 resumeLocalAssessment 已经将数据放入 currentAssessment ****
-        // **** 因此 assessment.js 无需特殊处理 resumeId，直接跳转即可 ****
-        window.location.href = 'assessment.html';
-
+        console.log("Assessment data loaded into currentAssessment. Redirecting...");
+        window.location.href = 'assessment.html'; // 跳转到测评页面
     } else {
         console.error(`无法找到 ID 为 ${recordIdToResume} 的可继续的本地测评记录。`);
-        alert("无法继续测评，记录可能已被删除或状态已改变。请刷新页面或重新检查本地记录。");
+        alert("无法继续测评，记录可能已被删除或状态已改变。");
         checkLocalRecords(); // 刷新本地列表显示
     }
 }
@@ -893,19 +1190,34 @@ function getPositionName(positionCode) {
      if (['值班站长', '车站值班员', '站务安全员'].includes(positionCode)) return positionCode;
      return positionMap[positionCode] || positionCode || '未知';
  }
-function formatDate(dateObject, includeTime = false) {
-     if (!dateObject || !(dateObject instanceof Date)) return 'N/A';
-     try {
-         const date = dateObject;
-         const year = date.getFullYear();
-         const month = (date.getMonth() + 1).toString().padStart(2, '0');
-         const day = date.getDate().toString().padStart(2, '0');
-         if (includeTime) {
-             const hours = date.getHours().toString().padStart(2, '0');
-             const minutes = date.getMinutes().toString().padStart(2, '0');
-             return `${year}-${month}-${day} ${hours}:${minutes}`;
-         } else {
-             return `${year}-${month}-${day}`;
-         }
-     } catch (e) { console.error("日期格式化错误:", e); return '日期错误'; }
+function formatDate(dateInput, includeTime = false) {
+    let dateObject;
+    if (dateInput instanceof Date) {
+        dateObject = dateInput;
+    } else if (typeof dateInput === 'string') {
+        dateObject = new Date(dateInput);
+    } else {
+        return 'N/A'; // Handle undefined, null, or other types
+    }
+
+    if (!dateObject || isNaN(dateObject.getTime())) return 'N/A'; // Check if the date is valid
+
+    try {
+        const year = dateObject.getFullYear();
+        const month = (dateObject.getMonth() + 1).toString().padStart(2, '0');
+        const day = dateObject.getDate().toString().padStart(2, '0');
+        if (includeTime) {
+            const hours = dateObject.getHours().toString().padStart(2, '0');
+            const minutes = dateObject.getMinutes().toString().padStart(2, '0');
+            // Optionally include seconds:
+            // const seconds = dateObject.getSeconds().toString().padStart(2, '0');
+            // return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+            return `${year}-${month}-${day} ${hours}:${minutes}`;
+        } else {
+            return `${year}-${month}-${day}`;
+        }
+    } catch (e) {
+        console.error("日期格式化错误:", e, "Input:", dateInput);
+        return '日期错误';
+    }
 }
