@@ -923,27 +923,34 @@ async function submitAssessment() {
         console.log("[submitAssessment] 结果已同步保存到本地历史记录。");
 
         localStorage.removeItem('currentAssessment');
-        console.log("[submitAssessment] 本地 currentAssessment 已清除。准备跳转...");
+        console.log("[submitAssessment] 本地 currentAssessment 已清除。");
 
-        window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
+        // **** [调试] 暂时注释掉跳转，观察日志 ****
+        // window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
+        console.log(`[submitAssessment] [调试] 操作完成，页面跳转已被禁用。收到的 ObjectId: ${savedAssessmentObjectId}`);
+        alert(`[调试] 测评提交成功！页面跳转已临时禁用，请查看控制台日志中的 ObjectId: ${savedAssessmentObjectId}`);
+
+        // 跳转注释掉后，需要手动恢复按钮状态，否则会一直显示"提交中"
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '提交测评 (调试模式)';
+        }
 
     } catch (error) {
         // **[错误处理]**
         console.error('[submitAssessment] 调用云函数时出错:', error);
         let errorMessage = '保存测评结果时出错，请稍后重试或联系管理员。';
         if (error.code && error.message) {
-            // 显示 LeanCloud 返回的更具体的错误信息
             errorMessage += `\n错误 (${error.code}): ${error.message}`;
         } else if (typeof error === 'string') {
             errorMessage += `\n详情: ${error}`;
         }
         alert(errorMessage);
 
-        // 恢复按钮状态 (可选)
-        const submitBtn = document.getElementById('submitBtn');
-        if(submitBtn) {
-            submitBtn.disabled = false; // 重新启用按钮，以便用户可以重试
-            submitBtn.innerHTML = '提交测评';
+        // 在 catch 块中也恢复按钮状态
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = '提交测评 (重试)';
         }
     }
 }
