@@ -231,9 +231,9 @@ function populateTable(records) {
         let durationText = 'N/A';
         const totalSeconds = record.get('totalActiveSeconds');
         if (totalSeconds !== undefined && totalSeconds !== null) {
-           const minutes = Math.floor(totalSeconds / 60);
-           const seconds = totalSeconds % 60;
-           durationText = `${minutes}分`;
+                const minutes = Math.floor(totalSeconds / 60);
+                const seconds = totalSeconds % 60;
+                durationText = `${minutes}分`;
            if (seconds > 0) durationText += ` ${seconds}秒`;
         } else {
             const minutes = record.get('durationMinutes');
@@ -400,18 +400,18 @@ function buildDetailHtml(assessment, details) {
             <div class="col-md-6"><strong>测评人:</strong> ${assessor}</div>
             <div class="col-md-6"><strong>测评时间:</strong> ${endTime}</div>
             <div class="col-md-6"><strong>测评用时:</strong> ${durationText}</div>
-        </div>
+                </div>
         <h6>得分信息</h6>
         <div class="row mb-3">
             <div class="col-md-4"><strong>总分:</strong> ${totalScore}</div>
             <div class="col-md-4"><strong>标准分:</strong> ${maxScore}</div>
             <div class="col-md-4"><strong>得分率:</strong> ${scoreRate}</div>
-        </div>
+                </div>
         <h6>题目详情</h6>
         <table class="table table-sm table-bordered mt-2">
-          <thead>
+                    <thead>
             <tr><th>序号</th><th>题目内容</th><th>标准分</th><th>得分</th><th>用时(秒)</th><th>备注</th></tr>
-          </thead>
+                    </thead>
           <tbody>
     `;
 
@@ -424,14 +424,14 @@ function buildDetailHtml(assessment, details) {
             const comment = detail.get('comment') || '无';
             tableHtml += `
                 <tr>
-                  <td>${index + 1}</td>
+                <td>${index + 1}</td>
                   <td>${qContent}</td>
                   <td>${stdScore}</td>
                   <td>${score}</td>
-                  <td>${duration}</td>
+                <td>${duration}</td> 
                   <td>${comment}</td>
-                </tr>
-            `;
+            </tr>
+        `;
         });
     } else {
         tableHtml += '<tr><td colspan="6" class="text-center text-muted">无题目详情数据</td></tr>';
@@ -596,7 +596,7 @@ function checkLocalRecords() {
 
     if (localUnsyncedRecords.length === 0) {
         localRecordsContainer.innerHTML = '<p class="text-center text-muted mb-0"><i class="bi bi-check-circle me-1"></i> 没有找到本地暂存或提交失败的测评记录。</p>';
-    } else {
+        } else {
         let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group list-group-flush">' // Use list-group-flush
         localUnsyncedRecords.forEach((record, index) => {
             // **** 修改：优先使用 startTime ****
@@ -681,7 +681,7 @@ function viewLocalDetail(recordId) {
     const scoreRate = record.status === 'paused' ? '--' : (record.scoreRate !== undefined ? `${record.scoreRate}%` : 'N/A');
 
     // 用时信息
-    let durationText = 'N/A';
+        let durationText = 'N/A';
     const totalSeconds = record.totalActiveSeconds;
     if (totalSeconds !== undefined && totalSeconds !== null) {
        const minutes = Math.floor(totalSeconds / 60);
@@ -799,9 +799,9 @@ function resumeLocalAssessment(recordIdToResume) {
              // Allow overwriting if current is the same ID or already completed/failed
              if (currentData.id != recordIdToResume && currentData.status !== 'completed' && currentData.status !== 'failed_to_submit') {
                   if (!confirm("当前已有另一个正在进行的测评。继续将丢失该测评的进度，确定要继续吗？")) {
-                     return; // 用户取消
+                return; // 用户取消
                  }
-             }
+            }
         }
 
         // 将选中的测评记录存入 currentAssessment
@@ -810,7 +810,7 @@ function resumeLocalAssessment(recordIdToResume) {
         // 清除可能存在的错误信息 (虽然 paused 不应该有)
         delete assessmentToResume.errorInfo;
         localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
-
+        
         // 从历史记录中移除暂存状态（推荐）
         history = history.filter(record => record.id != recordIdToResume);
         localStorage.setItem('assessmentHistory', JSON.stringify(history));
@@ -908,4 +908,4 @@ function formatDate(dateObject, includeTime = false) {
              return `${year}-${month}-${day}`;
          }
      } catch (e) { console.error("日期格式化错误:", e); return '日期错误'; }
- }
+}

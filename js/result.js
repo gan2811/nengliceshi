@@ -51,7 +51,7 @@ async function loadResultDataFromCloud() {
         }
         removeLoading(); // 同样移除加载状态
     }
-}
+    }
 
 // **** 新增：填充基本信息 ****
 function populateBasicInfo(assessment) {
@@ -62,7 +62,7 @@ function populateBasicInfo(assessment) {
     document.getElementById('position').textContent = getPositionName(assessment.get('positionCode'));
     document.getElementById('assessorName').textContent = assessment.get('assessorName') || '未记录';
     document.getElementById('assessmentTimestamp').textContent = formatDate(assessment.get('endTime'), true);
-
+    
     // 计算时长
     let durationText = 'N/A';
     const totalSeconds = assessment.get('totalActiveSeconds');
@@ -80,7 +80,7 @@ function populateBasicInfo(assessment) {
     } else { // Fallback if totalActiveSeconds is missing
          const minutes = assessment.get('durationMinutes');
          if (minutes !== undefined && minutes !== null) {
-             durationText = `${minutes}分钟`;
+         durationText = `${minutes}分钟`;
          }
     }
     document.getElementById('assessmentDuration').textContent = durationText;
@@ -264,7 +264,7 @@ function goToAnalysis() {
      }
      // Fallback or if data is missing
      console.warn("无法获取当前测评的员工ID或测评ID，将直接跳转到分析页面。");
-     window.location.href = 'analysis.html';
+         window.location.href = 'analysis.html';
 }
 
 // 打印样式
