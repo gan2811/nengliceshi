@@ -55,8 +55,8 @@ document.addEventListener('DOMContentLoaded', function() {
     // **自动加载第一页云端数据**
     loadHistoryFromCloud(currentPage); // Start loading cloud data
 
-    // **** 修改：在页面加载时自动检查并显示本地记录 ****
-    checkLocalRecords(); // Automatically check local records on load
+    // **** 修改：移除页面加载时自动检查本地记录 ****
+    // checkLocalRecords(); // Automatically check local records on load
 
 });
 
@@ -103,6 +103,11 @@ function updateSortIcons() {
     });
 }
 
+// **** 新增：辅助函数 - 延迟 ****
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 // **** 主要函数：从 LeanCloud 加载历史记录 ****
 async function loadHistoryFromCloud(page = 1) {
     currentPage = page;
@@ -131,7 +136,7 @@ async function loadHistoryFromCloud(page = 1) {
         setupPagination(totalRecords, page);
 
         // --- [修改] 后台分批同步所有符合条件的记录到本地存储 ---
-        console.log("开始后台分批同步所有符合条件的记录到本地存储...");
+        console.log("开始后台同步所有符合条件的记录到本地存储...");
         syncAllFilteredCloudDataToLocal(); // Call the updated sync function
 
     } catch (error) {
@@ -211,129 +216,158 @@ function applySortingToQuery(query) {
     }
 }
 
-// **** 修改：后台分批同步所有过滤后的云端数据到本地 ****
+// **** 修改：后台同步云端数据到本地 (增加失败回退和慢速模式) ****
 async function syncAllFilteredCloudDataToLocal() {
-    const batchSize = 20; // <--- 每批次同步的数量
-    const maxSyncRecords = 500; // 同步的总数上限
-    let allAssessmentRecords = [];
-    let skip = 0;
-    let fetchedInLastBatch = 0;
+    // 定义模式参数
+    const FAST_MODE = { batchSize: 50, delay: 0 };
+    const SLOW_MODE = { batchSize: 20, delay: 500 }; // 慢速模式：小批次，500ms延迟
 
-    console.log(`[syncLocal] Starting batch sync. Batch size: ${batchSize}, Max records: ${maxSyncRecords}`);
+    // 内部核心同步函数
+    async function performSync(mode, isRetry = false) {
+        const { batchSize, delay } = mode;
+        let allAssessmentRecords = [];
+        let allDetails = []; // 移到这里，避免重试时重复获取
+        let skip = 0;
+        let fetchedInLastBatch = 0;
+        console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Starting sync. Batch size: ${batchSize}, Delay: ${delay}ms`);
 
+        try {
+            // 1. 分批获取 Assessment 数据
+            do {
+                const batchQuery = await buildAssessmentQuery();
+                applySortingToQuery(batchQuery);
+                batchQuery.limit(batchSize);
+                batchQuery.skip(skip);
+                batchQuery.include('userPointer');
+
+                const batchResults = await batchQuery.find();
+                fetchedInLastBatch = batchResults.length;
+                allAssessmentRecords = allAssessmentRecords.concat(batchResults);
+                skip += fetchedInLastBatch;
+                console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Fetched batch: ${fetchedInLastBatch} records. Total fetched: ${allAssessmentRecords.length}`);
+
+                // 如果是慢速模式，添加延迟
+                if (delay > 0) {
+                    await sleep(delay);
+                }
+
+            } while (fetchedInLastBatch === batchSize);
+
+            console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Finished fetching Assessments. Total: ${allAssessmentRecords.length}. Now fetching details...`);
+
+            if (allAssessmentRecords.length === 0) {
+                localStorage.setItem('assessmentHistory', JSON.stringify([]));
+                console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] No matching records found in cloud. Local assessmentHistory cleared.`);
+                return true; // 同步成功（虽然是空的）
+            }
+
+            // 2. 获取所有关联的 AssessmentDetail
+            // 注意：获取 Detail 仍然可能因数量过多触发流控，但 LeanCloud SDK 的 find 通常内部有处理
+            // 如果 fetch Details 仍然频繁失败，可能需要将 Details 的获取也分批并加入延迟
+            if (allAssessmentRecords.length > 0) {
+                const assessmentPointers = allAssessmentRecords.map(record => AV.Object.createWithoutData('Assessment', record.id));
+                const detailQuery = new AV.Query('AssessmentDetail');
+                detailQuery.containedIn('assessmentPointer', assessmentPointers);
+                detailQuery.include('assessmentPointer'); // 可选，取决于是否需要
+                detailQuery.limit(1000); // 单次查询 Detail 上限
+                // 如果 Assessment 数量远超 100，这里可能需要分批查询 Detail
+                allDetails = await detailQuery.find(); 
+            }
+
+            const detailsByAssessmentId = allDetails.reduce((acc, detail) => {
+                 const assessmentId = detail.get('assessmentPointer')?.id;
+                 if (assessmentId) {
+                     if (!acc[assessmentId]) acc[assessmentId] = [];
+                     acc[assessmentId].push(detail);
+                 }
+                 return acc;
+             }, {});
+            console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Fetched ${allDetails.length} related AssessmentDetail records.`);
+
+            // 3. 格式化数据并存入 localStorage (逻辑不变)
+            const formattedHistory = [];
+             for (const record of allAssessmentRecords) {
+                 const userInfo = record.get('userPointer');
+                 const details = detailsByAssessmentId[record.id] || [];
+
+                 const localRecord = {
+                     id: record.id,
+                     userInfo: userInfo ? {
+                         name: userInfo.get('name'),
+                         employeeId: userInfo.get('employeeId'),
+                         station: userInfo.get('stationCode'),
+                         position: record.get('positionCode'),
+                         positionName: getPositionName(record.get('positionCode')),
+                     } : {},
+                     position: record.get('positionCode'),
+                     assessor: record.get('assessorName'),
+                     timestamp: record.get('endTime')?.toISOString(),
+                     startTime: record.get('startTime')?.toISOString(),
+                     duration: record.get('durationMinutes'),
+                     score: {
+                         totalScore: record.get('totalScore'),
+                         maxScore: record.get('maxPossibleScore'),
+                         scoreRate: record.get('scoreRate'),
+                     },
+                      questions: details.map(d => ({
+                          id: d.get('questionId'),
+                          content: d.get('questionContent'),
+                          standardScore: d.get('standardScore'),
+                          standardAnswer: d.get('standardAnswer'),
+                          section: d.get('section'),
+                          type: d.get('type'),
+                          knowledgeSource: d.get('knowledgeSource')
+                      })),
+                     answers: details.reduce((acc, d) => {
+                         const qId = d.get('questionId');
+                         acc[qId] = {
+                             score: d.get('score'),
+                             comment: d.get('comment'),
+                             startTime: null,
+                             duration: d.get('durationSeconds'),
+                         };
+                         return acc;
+                     }, {}),
+                     status: record.get('status'),
+                     elapsedSeconds: record.get('elapsedSeconds'),
+                     currentQuestionIndex: record.get('currentQuestionIndex'),
+                     totalActiveSeconds: record.get('totalActiveSeconds'),
+                 };
+                  formattedHistory.push(localRecord);
+             }
+            localStorage.setItem('assessmentHistory', JSON.stringify(formattedHistory));
+            console.log(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Sync complete. ${formattedHistory.length} records saved to local assessmentHistory.`);
+            return true; // 同步成功
+
+        } catch (error) {
+            console.error(`[syncLocal:${isRetry ? 'SLOW' : 'FAST'}] Sync failed:`, error);
+            // 将错误向上抛出，由主函数处理
+            throw error;
+        }
+    }
+
+    // ---- 主逻辑：尝试快速同步，失败则回退到慢速 ----
     try {
-        // 循环分批获取 Assessment 数据
-        do {
-            const batchQuery = await buildAssessmentQuery(); // 获取带筛选条件的查询
-            applySortingToQuery(batchQuery); // 应用排序
-            batchQuery.limit(batchSize);
-            batchQuery.skip(skip);
-            batchQuery.include('userPointer');
-
-            const batchResults = await batchQuery.find();
-            fetchedInLastBatch = batchResults.length;
-            allAssessmentRecords = allAssessmentRecords.concat(batchResults);
-            skip += fetchedInLastBatch;
-
-            console.log(`[syncLocal] Fetched batch: ${fetchedInLastBatch} records. Total fetched: ${allAssessmentRecords.length}`);
-
-            if (allAssessmentRecords.length >= maxSyncRecords) {
-                console.warn(`[syncLocal] Reached max sync limit (${maxSyncRecords}). Stopping fetch.`);
-                allAssessmentRecords = allAssessmentRecords.slice(0, maxSyncRecords); // 截取
-                break;
-            }
-
-        } while (fetchedInLastBatch === batchSize); // 如果上一批刚好满，则可能还有更多
-
-        console.log(`[syncLocal] Finished fetching Assessments. Total: ${allAssessmentRecords.length}. Now fetching details...`);
-
-        if (allAssessmentRecords.length === 0) {
-            localStorage.setItem('assessmentHistory', JSON.stringify([]));
-            console.log("[syncLocal] No matching records found in cloud. Local assessmentHistory cleared.");
-            return;
-        }
-
-        // 获取所有关联的 AssessmentDetail (一次性获取，因为SDK限制)
-        // 注意：如果 assessmentPointers 数量很大（如 > 100），这可能需要进一步分批
-        let allDetails = [];
-        if (allAssessmentRecords.length > 0) {
-            const assessmentPointers = allAssessmentRecords.map(record => AV.Object.createWithoutData('Assessment', record.id));
-            const detailQuery = new AV.Query('AssessmentDetail');
-            detailQuery.containedIn('assessmentPointer', assessmentPointers);
-            detailQuery.include('assessmentPointer');
-            detailQuery.limit(1000); // Detail 数量上限 (通常足够)
-            allDetails = await detailQuery.find();
-        }
-
-
-        // 将 Details 按 Assessment ID 分组
-        const detailsByAssessmentId = allDetails.reduce((acc, detail) => {
-            const assessmentId = detail.get('assessmentPointer')?.id;
-            if (assessmentId) {
-                if (!acc[assessmentId]) acc[assessmentId] = [];
-                acc[assessmentId].push(detail);
-            }
-            return acc;
-        }, {});
-        console.log(`[syncLocal] Fetched ${allDetails.length} related AssessmentDetail records.`);
-
-        // 格式化数据并存入 localStorage
-        const formattedHistory = [];
-        for (const record of allAssessmentRecords) {
-            const userInfo = record.get('userPointer');
-            const details = detailsByAssessmentId[record.id] || [];
-
-            const localRecord = {
-                id: record.id,
-                userInfo: userInfo ? {
-                    name: userInfo.get('name'),
-                    employeeId: userInfo.get('employeeId'),
-                    station: userInfo.get('stationCode'),
-                    position: record.get('positionCode'),
-                    positionName: getPositionName(record.get('positionCode')),
-                } : {},
-                position: record.get('positionCode'),
-                assessor: record.get('assessorName'),
-                timestamp: record.get('endTime')?.toISOString(),
-                startTime: record.get('startTime')?.toISOString(),
-                duration: record.get('durationMinutes'),
-                score: {
-                    totalScore: record.get('totalScore'),
-                    maxScore: record.get('maxPossibleScore'),
-                    scoreRate: record.get('scoreRate'),
-                },
-                 questions: details.map(d => ({
-                     id: d.get('questionId'),
-                     content: d.get('questionContent'),
-                     standardScore: d.get('standardScore'),
-                     standardAnswer: d.get('standardAnswer'),
-                     section: d.get('section'),
-                     type: d.get('type'),
-                     knowledgeSource: d.get('knowledgeSource')
-                 })),
-                answers: details.reduce((acc, d) => {
-                    const qId = d.get('questionId');
-                    acc[qId] = {
-                        score: d.get('score'),
-                        comment: d.get('comment'),
-                        startTime: null,
-                        duration: d.get('durationSeconds'),
-                    };
-                    return acc;
-                }, {}),
-                status: record.get('status'),
-                elapsedSeconds: record.get('elapsedSeconds'),
-                currentQuestionIndex: record.get('currentQuestionIndex'),
-                totalActiveSeconds: record.get('totalActiveSeconds'),
-            };
-             formattedHistory.push(localRecord);
-        }
-
-        localStorage.setItem('assessmentHistory', JSON.stringify(formattedHistory));
-        console.log(`[syncLocal] Sync complete. ${formattedHistory.length} records saved to local assessmentHistory.`);
-
+        await performSync(FAST_MODE, false); // 尝试快速模式
+        console.log("[syncLocal] Fast sync attempt finished.");
     } catch (error) {
-        console.error("[syncLocal] Background sync to local storage failed:", error);
+        console.warn("[syncLocal] Fast sync failed.", error);
+        // 检查是否是流控错误 (LeanCloud API Rate Limit 通常是 code 155)
+        if (error && (error.code === 155 || error.code === 429)) { 
+            console.warn("[syncLocal] Rate limit error detected. Falling back to SLOW sync mode...");
+            try {
+                await performSync(SLOW_MODE, true); // 尝试慢速模式
+                console.log("[syncLocal] Slow sync attempt finished.");
+            } catch (slowError) {
+                console.error("[syncLocal] Slow sync also failed:", slowError);
+                // 可以选择在这里通知用户同步失败
+                // alert("同步云端历史记录失败，请稍后重试或联系管理员。");
+            }
+        } else {
+            // 其他类型的错误
+            console.error("[syncLocal] Sync failed due to non-rate-limit error:", error);
+            // alert("同步云端历史记录时发生错误。");
+        }
     }
 }
 
@@ -978,9 +1012,8 @@ async function resumeAssessment(assessmentId) {
 
          // 3. Build the structure needed by assessment.js
          const userInfo = assessmentRecord.get('userPointer');
-         const frontendId = assessmentRecord.get('frontendId'); // **** 获取前端 ID ****
          const assessmentToResume = {
-              id: frontendId || assessmentRecord.id, // **** 使用 frontendId 作为主 ID ****
+              id: String(assessmentRecord.get('assessmentId')), 
               userInfo: userInfo ? {
                  name: userInfo.get('name'),
                  employeeId: userInfo.get('employeeId'),
@@ -1045,88 +1078,89 @@ async function resumeAssessment(assessmentId) {
      }
 }
 
-// **** 新增：检查本地暂存/失败的记录 ****
+// **** 修改：检查本地暂存/失败的记录 (改为切换显示) ****
 function checkLocalRecords() {
     console.log("[checkLocalRecords] 开始检查本地记录...");
-     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    let history = [];
+    try {
+         history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    } catch (e) {
+         console.error("[checkLocalRecords] Error parsing assessmentHistory:", e);
+         alert("读取本地历史记录时出错！");
+         return;
+    }
+
     localUnsyncedRecords = history.filter(record => 
         record.status === 'paused' || record.status === 'failed_to_submit'
     );
     console.log(`[checkLocalRecords] 找到 ${localUnsyncedRecords.length} 条未同步记录。`);
 
-    // 获取用于显示结果的容器
+    // 获取或创建用于显示结果的容器
     let localRecordsContainer = document.getElementById('localRecordsDisplayArea');
-
-    // **** 修改：仅当有本地记录时才显示该区域 ****
-    if (localUnsyncedRecords.length === 0) {
-        // 如果容器存在，则清空并隐藏或移除
-        if (localRecordsContainer) {
-            localRecordsContainer.innerHTML = '';
-            localRecordsContainer.classList.add('d-none'); // 添加 d-none 类来隐藏
-            // 或者直接移除: localRecordsContainer.remove();
-        }
-        // 如果容器不存在，则什么也不做
-        return; // 没有记录，直接返回
-    }
-
-    // ---- 如果有记录，则确保容器存在并显示 ----
     if (!localRecordsContainer) {
         localRecordsContainer = document.createElement('div');
         localRecordsContainer.id = 'localRecordsDisplayArea';
-        localRecordsContainer.className = 'mt-4 mb-3 p-3 border rounded bg-light shadow-sm'; // 移除 d-none (如果之前有)
-        // 插入到筛选区域下方，表格上方 (保持不变)
-        const filterSection = document.querySelector('.filter-section');
-        const tableContainer = document.querySelector('.table-responsive');
-        if (filterSection && tableContainer) {
-             filterSection.parentElement.insertBefore(localRecordsContainer, tableContainer.parentElement);
-         } else {
-            // Fallback: 插入到 container 顶部 (保持不变)
-            document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
+        // **** 初始状态添加 d-none，使其默认隐藏 ****
+        localRecordsContainer.className = 'mt-4 mb-3 p-3 border rounded bg-light shadow-sm d-none'; 
+        // 插入位置逻辑保持不变
+        const filterSection = document.querySelector('.filter-section'); // 查找筛选区域的容器
+        const tableContainer = document.querySelector('.table-responsive'); // 查找表格的容器
+        // 尝试插入到 filter-section 之后，table-responsive 之前
+        if (filterSection && tableContainer && filterSection.parentNode === tableContainer.parentNode) {
+             filterSection.parentNode.insertBefore(localRecordsContainer, tableContainer);
+        } else if (filterSection) {
+             // 如果找不到表格或父级不同，尝试插入到筛选区域之后
+             filterSection.parentNode.insertBefore(localRecordsContainer, filterSection.nextSibling);
+        } else {
+            // Fallback: 插入到 container 顶部
+            const mainContainer = document.querySelector('.container');
+            if(mainContainer) mainContainer.insertBefore(localRecordsContainer, mainContainer.firstChild);
         }
-    } else {
-        // 如果容器已存在，确保它是可见的
-        localRecordsContainer.classList.remove('d-none');
     }
 
-    // 清空之前的内容 (移到这里，确保只在有记录时清空)
-    localRecordsContainer.innerHTML = '';
+    // ---- 根据是否有记录进行处理 ----
+    if (localUnsyncedRecords.length === 0) {
+        alert("没有找到本地暂存或提交失败的测评记录。");
+        // 确保容器是隐藏的
+        localRecordsContainer.classList.add('d-none');
+        localRecordsContainer.innerHTML = ''; // 清空内容
+    } else {
+        // ---- 构建列表 HTML ----
+        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">';
+        localUnsyncedRecords.forEach((record, index) => {
+            const timestamp = formatDate(record.timestamp || record.startTime, true);
+            const name = record.userInfo?.name || '未知';
+            const position = getPositionName(record.position || record.userInfo?.position);
+            let statusBadge = '';
+            let actionsHtml = '';
 
-    // ---- 构建并显示列表 HTML (逻辑基本不变) ----
-    let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">';
-    localUnsyncedRecords.forEach((record, index) => {
-        const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
-        const name = record.userInfo?.name || '未知';
-        const position = getPositionName(record.position || record.userInfo?.position);
-        let statusBadge = '';
-        let actionsHtml = '';
+            if (record.status === 'paused') {
+                statusBadge = '<span class="badge bg-warning text-dark ms-2">本地暂存</span>';
+                actionsHtml = `<button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地副本</button>`;
+            } else if (record.status === 'failed_to_submit') {
+                statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
+                actionsHtml = `
+                    <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
+                `;
+            }
 
-        if (record.status === 'paused') {
-            statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
-            actionsHtml = `
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
+            listHtml += `
+                <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
+                    <div>
+                        <strong>${name}</strong> (${position}) ${statusBadge}<br>
+                        <small class="text-muted">时间: ${timestamp}</small>
+                    </div>
+                    <div>${actionsHtml}</div>
+                </li>
             `;
-        } else if (record.status === 'failed_to_submit') {
-            statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
-            actionsHtml = `
-                <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
-                <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
-            `;
-        }
-
-        listHtml += `
-            <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
-                <div>
-                    <strong>${name}</strong> (${position}) ${statusBadge}<br>
-                    <small class="text-muted">时间: ${timestamp}</small>
-                </div>
-                <div>
-                    ${actionsHtml}
-                </div>
-            </li>
-        `;
-    });
-    listHtml += '</ul>';
-    localRecordsContainer.innerHTML = listHtml;
+        });
+        listHtml += '</ul>';
+        
+        // ---- 填充内容并切换显示状态 ----
+        localRecordsContainer.innerHTML = listHtml;
+        localRecordsContainer.classList.toggle('d-none'); // 切换显示/隐藏
+    }
 }
 
 // **** 新增：删除本地记录 ****
