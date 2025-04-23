@@ -941,18 +941,54 @@ async function submitAssessment() {
     } catch (error) {
         // **[错误处理]**
         console.error('[submitAssessment] 调用云函数时出错:', error);
-        let errorMessage = '保存测评结果时出错，请稍后重试或联系管理员。';
+
+        // **** 更新：标记为失败并保存回 localStorage ****
+        if (currentAssessmentData) { 
+            currentAssessmentData.status = 'failed_to_submit'; // 标记失败状态
+            currentAssessmentData.errorInfo = { // 可选：记录错误信息
+                code: error.code,
+                message: error.message,
+                timestamp: new Date().toISOString()
+            };
+            try {
+                // 1. 仍然保存到 currentAssessment，以便下次进入测评页时可以提示
+                localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData));
+                console.log("[submitAssessment] 已将失败状态保存回 localStorage ('currentAssessment')，ID:", currentAssessmentData.id);
+                
+                // 2. 同时添加到/更新到 assessmentHistory
+                const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+                const existingIndex = history.findIndex(item => item.id === currentAssessmentData.id);
+                if (existingIndex > -1) {
+                    history[existingIndex] = { ...currentAssessmentData }; // 更新历史记录中的对应项
+                    console.log(`[submitAssessment] 已更新 assessmentHistory 中的失败记录，ID: ${currentAssessmentData.id}`);
+                } else {
+                    history.push({ ...currentAssessmentData }); // 添加为新的失败记录
+                     console.log(`[submitAssessment] 已将新的失败记录添加到 assessmentHistory，ID: ${currentAssessmentData.id}`);
+                }
+                localStorage.setItem('assessmentHistory', JSON.stringify(history));
+
+            } catch (saveError) {
+                console.error("[submitAssessment] 保存失败状态到 localStorage 时出错:", saveError);
+            }
+        } else {
+            console.error("[submitAssessment] 无法保存失败状态，currentAssessmentData 不存在。");
+        }
+        // **** 结束更新 ****
+
+        let errorMessage = '测评结果提交到云端失败！';
         if (error.code && error.message) {
             errorMessage += `\n错误 (${error.code}): ${error.message}`;
         } else if (typeof error === 'string') {
             errorMessage += `\n详情: ${error}`;
         }
+        errorMessage += '\n\n您的测评进度已保存在本地，请稍后在"历史记录"页面检查并尝试重新提交。'; // 修改提示
         alert(errorMessage);
 
         // 在 catch 块中也恢复按钮状态
+        const submitBtn = document.getElementById('submitBtn'); // 确保 submitBtn 在此处可用
         if (submitBtn) {
             submitBtn.disabled = false;
-            submitBtn.innerHTML = '提交测评 (重试)';
+            submitBtn.innerHTML = '提交失败 (重试)'; // 更新按钮文本提示重试
         }
     }
 }
