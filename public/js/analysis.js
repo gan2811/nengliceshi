@@ -1528,353 +1528,224 @@ function loadEmployeeListAndSelect(employeeIdToSelect, assessmentIdToSelect) {
     });
 }
 
-// 新增：加载员工列表并预选员工及测评记录
-function loadEmployeeAssessments() {
+// **** 修改：从云端加载员工的测评记录 ****
+async function loadEmployeeAssessments() {
     const employeeSelect = document.getElementById('employeeSelect');
     const assessmentRecordSelect = document.getElementById('assessmentRecordSelect');
-    const selectedEmployeeId = employeeSelect.value;
+    const selectedEmployeeId = employeeSelect ? employeeSelect.value : null;
+    const loadingOptionText = '-- 正在加载记录... --';
+    const noEmployeeText = '-- 请先选择员工 --';
+    const noRecordsText = '该员工无测评记录';
 
-    // // // console.log(`[loadEmployeeAssessments] 开始加载测评记录. 选中的员工 ID (selectedEmployeeId): ${selectedEmployeeId}`); // Log start
+    console.log(`[loadEmployeeAssessments] 开始加载测评记录. 选中的员工 ID: ${selectedEmployeeId}`);
 
-    assessmentRecordSelect.innerHTML = '<option value="">-- 正在加载记录... --</option>';
+    // 重置下拉框状态
+    assessmentRecordSelect.innerHTML = `<option value="">${loadingOptionText}</option>`;
     assessmentRecordSelect.disabled = true;
-    clearIndividualAnalysis(); // 清空之前的分析结果
+    clearIndividualAnalysis(); // 清空旧分析
 
     if (!selectedEmployeeId) {
-        assessmentRecordSelect.innerHTML = '<option value="">-- 请先选择员工 --</option>';
-        // // // console.log("[loadEmployeeAssessments] 未选择员工，退出。");
+        assessmentRecordSelect.innerHTML = `<option value="">${noEmployeeText}</option>`;
+        console.log("[loadEmployeeAssessments] 未选择员工，退出。");
         return;
     }
 
-    // 从 localStorage 加载历史记录
-    const allHistoryStr = localStorage.getItem('assessmentHistory');
-    const allHistory = JSON.parse(allHistoryStr || '[]');
-    // // // console.log(`[loadEmployeeAssessments] 从 localStorage 加载了 ${allHistory.length} 条记录.`);
+    try {
+        // 1. 根据 employeeId 找到 UserProfile 对象
+        const userQuery = new AV.Query('UserProfile');
+        // 假设 employeeSelect 的 value 就是 UserProfile 的 objectId
+        // 如果不是，需要先根据 employeeId 查询 UserProfile objectId
+        // 确认 employeeSelect.value 是什么？ 从 loadEmployeeList 看，value 是 user.id (objectId)
+        const userObject = AV.Object.createWithoutData('UserProfile', selectedEmployeeId);
+        console.log(`[loadEmployeeAssessments] 准备查询员工 UserProfile: ${selectedEmployeeId}`);
+        // 可以选择性地 fetch 一下确认用户存在，但非必需
+        // await userObject.fetch(); 
+        
+        console.log(`[loadEmployeeAssessments] 查询该用户的 Assessment 记录, userPointer 指向: ${userObject.id}`);
 
-    // 筛选出该员工的所有记录，并按时间倒序
-    // // // console.log(`[loadEmployeeAssessments] 开始筛选 ID 为 '${selectedEmployeeId}' 的记录...`);
-    const employeeHistory = allHistory
-        .filter(record => {
-             // **** Stricter check for userInfo ****
-             if (!record?.userInfo) {
-                 console.error(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id} 时发现缺少 userInfo 对象! 跳过此记录。`);
-                 return false; 
+        // 2. 查询该用户的所有 Assessment 记录
+        const assessmentQuery = new AV.Query('Assessment');
+        assessmentQuery.equalTo('userPointer', userObject); // 关键筛选条件
+        assessmentQuery.limit(1000); // 获取最多1000条记录，如果可能超过需要分页
+        assessmentQuery.addDescending('endTime'); // 按结束时间降序排列
+        // 可能需要包含 userPointer 信息以防万一？虽然我们已经有 userObject 了
+        // assessmentQuery.include('userPointer'); 
+
+        const employeeAssessments = await assessmentQuery.find();
+        console.log(`[loadEmployeeAssessments] 从云端查询到 ${employeeAssessments.length} 条记录.`);
+
+        if (employeeAssessments.length === 0) {
+            assessmentRecordSelect.innerHTML = `<option value="">${noRecordsText}</option>`;
+            console.log("[loadEmployeeAssessments] 未找到该员工的云端记录.");
+            return;
+        }
+
+        // 3. 填充测评记录下拉框
+        assessmentRecordSelect.innerHTML = ''; // 清空 "加载中..."
+
+        // 添加综合分析选项
+        if (employeeAssessments.length > 0) {
+            const summaryOption = document.createElement('option');
+            summaryOption.value = 'all';
+            summaryOption.textContent = `所有记录 (${employeeAssessments.length}条) - 综合分析`;
+            assessmentRecordSelect.appendChild(summaryOption);
+            console.log("[loadEmployeeAssessments] 已添加 '综合分析 (all)' 选项.");
+        }
+
+        employeeAssessments.forEach(record => {
+            const option = document.createElement('option');
+            option.value = record.id; // 使用云端记录的 objectId
+            const recordDate = record.get('endTime') || new Date(); // 使用 endTime
+            const scoreRate = record.get('scoreRate');
+            const scoreRateText = (scoreRate !== undefined && scoreRate !== null) ? `${scoreRate}%` : 'N/A';
+            // 获取岗位信息
+            const positionCode = record.get('positionCode');
+            const positionName = getPositionName(positionCode);
+            
+            option.textContent = `${formatSimpleDateTime(recordDate)} - ${positionName} - 得分率: ${scoreRateText}`;
+            console.log(`[loadEmployeeAssessments]   -> 添加记录选项: ID='${record.id}', Text='${option.textContent}'`);
+            assessmentRecordSelect.appendChild(option);
+        });
+
+        assessmentRecordSelect.disabled = false;
+
+        // 默认触发加载综合分析
+        if (assessmentRecordSelect.querySelector('option[value="all"]')) {
+            assessmentRecordSelect.value = 'all'; // 默认选中综合分析
+            console.log("[loadEmployeeAssessments] 默认选中 '综合分析 (all)' 并将加载分析.");
+            loadIndividualAnalysisFromSelection(); // 触发加载
+        } else {
+             console.warn("[loadEmployeeAssessments] 逻辑错误：查询到记录但未添加'all'选项？");
+             // Fallback: 如果没有 'all' 但有记录，加载第一条
+             if(employeeAssessments.length > 0) {
+                assessmentRecordSelect.value = employeeAssessments[0].id;
+                loadIndividualAnalysisFromSelection();
              }
-             const recordEmployeeId = record.userInfo.employeeId || record.userInfo.id; 
-             // **** Add specific check for missing ID within userInfo ****
-             if (recordEmployeeId === undefined || recordEmployeeId === null) {
-                 console.error(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id} 时发现 userInfo 中缺少 employeeId 或 id! 跳过此记录。`);
-                 return false;
-             }
+        }
 
-             const match = recordEmployeeId == selectedEmployeeId; // Use == for potential type difference
-             console.log(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id}, ` +
-                         `记录中的员工ID: '${recordEmployeeId}' (类型: ${typeof recordEmployeeId}), ` +
-                         `目标员工ID: '${selectedEmployeeId}' (类型: ${typeof selectedEmployeeId}), ` +
-                         `匹配结果: ${match}`);
-             return match;
-         })
-        .sort((a, b) => (new Date(b.timestamp || b.endTime)) - (new Date(a.timestamp || a.endTime)));
-    
-    // // // console.log(`[loadEmployeeAssessments] 筛选结束. 为员工 ${selectedEmployeeId} 找到 ${employeeHistory.length} 条记录.`);
-
-    if (employeeHistory.length === 0) {
-        assessmentRecordSelect.innerHTML = '<option value="">该员工无测评记录</option>';
-        // // // console.log("[loadEmployeeAssessments] 未找到该员工的记录.");
-        return;
+    } catch (error) {
+        console.error("[loadEmployeeAssessments] 从云端加载测评记录失败:", error);
+        assessmentRecordSelect.innerHTML = `<option value="">加载记录失败</option>`;
+        // 可选：显示更详细的错误信息
+        alert(`加载员工测评记录失败: ${error.message}`);
     }
-
-    // 填充测评记录下拉框
-    assessmentRecordSelect.innerHTML = ''; // 清空
-    
-    // **** 新增：如果有多条记录，添加综合分析选项并默认选中 ****
-    if (employeeHistory.length > 0) { // Changed condition slightly for clarity
-        const summaryOption = document.createElement('option');
-        summaryOption.value = 'all';
-        summaryOption.textContent = `所有记录 (${employeeHistory.length}条) - 综合分析`;
-        assessmentRecordSelect.appendChild(summaryOption);
-        // // // console.log("[loadEmployeeAssessments] 已添加 '综合分析 (all)' 选项.");
-    }
-
-    employeeHistory.forEach(record => {
-        const option = document.createElement('option');
-        option.value = record.id; // 使用记录的唯一ID作为value
-        const recordDate = new Date(record.timestamp || record.endTime);
-        const scoreRateText = record.score?.scoreRate !== undefined ? `${record.score.scoreRate}%` : 'N/A';
-        const positionName = getPositionName(record.position || record.userInfo?.position);
-        option.textContent = `${formatSimpleDateTime(recordDate)} - ${positionName} - 得分率: ${scoreRateText}`;
-        // **** Log adding record option ****
-        // // // console.log(`[loadEmployeeAssessments]   -> 添加记录选项: ID='${record.id}', Text='${option.textContent}'`);
-        assessmentRecordSelect.appendChild(option);
-    });
-    // // // console.log("[loadEmployeeAssessments] 已填充测评记录下拉框.");
-
-    assessmentRecordSelect.disabled = false;
-
-    // **** 新增：默认触发加载综合分析 (如果添加了'all'选项) ****
-    if (assessmentRecordSelect.querySelector('option[value="all"]')) {
-        assessmentRecordSelect.value = 'all'; // 默认选中综合分析
-        // // // console.log("[loadEmployeeAssessments] 默认选中 '综合分析 (all)' 并将加载分析.");
-        loadIndividualAnalysisFromSelection(); // 触发加载
-    } else if (employeeHistory.length > 0) {
-        // 如果只有一条记录，默认选中该记录并加载
-        assessmentRecordSelect.value = employeeHistory[0].id;
-        // // // console.log(`[loadEmployeeAssessments] 只有一条记录，默认选中记录 ${employeeHistory[0].id} 并将加载分析.`);
-        loadIndividualAnalysisFromSelection();
-    } else {
-         // // // console.log("[loadEmployeeAssessments] 无默认选项被选中.");
-    }
-    // // // console.log("[loadEmployeeAssessments] 结束."); // End log
+    console.log("[loadEmployeeAssessments] 结束.");
 }
 
-// **** 修改: 处理综合分析和单次分析的加载 ****
-function loadIndividualAnalysisFromSelection() {
+// **** 修改: 处理综合分析和单次分析的加载 (需要适配云端数据) ****
+async function loadIndividualAnalysisFromSelection() {
     const assessmentRecordSelect = document.getElementById('assessmentRecordSelect');
-    const employeeSelect = document.getElementById('employeeSelect'); // 获取员工选择元素
-    const selectedValue = assessmentRecordSelect ? assessmentRecordSelect.value : null; // 记录ID或'all'
-    const selectedEmployeeId = employeeSelect ? employeeSelect.value : null; // 员工ID
-
-    // **** 增强日志记录 ****
-    // // // console.log(`[loadIndividualAnalysisFromSelection] START. EmployeeID: ${selectedEmployeeId}, Selected Record Value: ${selectedValue}`);
-
-    // 清空现有内容并显示占位符 (先隐藏内容，显示占位符)
-    clearIndividualAnalysis(); 
-
-    if (!selectedValue || !selectedEmployeeId) {
-        // // // console.warn("[loadIndividualAnalysisFromSelection] Missing employee or record selection. Placeholder remains visible.");
-        // 更新占位符提示
-        document.getElementById('individualAnalysisPlaceholder').innerHTML = 
-            '<p class="text-muted text-center mt-3">请在上方筛选并选择员工及测评记录。</p>';
-        document.getElementById('individualAnalysisPlaceholder').style.display = 'block'; // 确保占位符可见
-        document.getElementById('individualAnalysisContent').classList.add('d-none'); // 确保内容隐藏
-        return;
-    }
-
-    // 从 localStorage 加载完整历史记录
-    const allHistory = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    // // // console.log(`[loadIndividualAnalysisFromSelection] Loaded ${allHistory.length} total history records.`);
-
-    let analysisTitle = '';
-    let recordsToAnalyze = [];
-
-    if (selectedValue === 'all') {
-        // 综合分析：筛选该员工的所有记录
-        // // // console.log(`[loadIndividualAnalysisFromSelection] Filtering for ALL records of employee ${selectedEmployeeId}...`);
-        recordsToAnalyze = allHistory
-            .filter(record => record?.userInfo?.employeeId == selectedEmployeeId) // Use == for employeeId too, just in case
-            .sort((a, b) => new Date(a.timestamp || a.endTime) - new Date(b.timestamp || b.endTime)); // Sort oldest to newest for trend charts
-        
-        // // // console.log(`[loadIndividualAnalysisFromSelection] Found ${recordsToAnalyze.length} records for combined analysis.`);
-
-        if (recordsToAnalyze.length > 0) {
-             const employeeName = recordsToAnalyze[0].userInfo.name || `员工 ${selectedEmployeeId}`; // Get name from first record
-             analysisTitle = `${employeeName} - 所有 ${recordsToAnalyze.length} 条记录综合分析`;
-        } else {
-            analysisTitle = `未找到员工 ${selectedEmployeeId} 的任何记录`;
-        }
-
-    } else {
-        // 单次分析：查找指定 ID 的记录
-        // // // console.log(`[loadIndividualAnalysisFromSelection] Finding specific record with ID: ${selectedValue} (Type: ${typeof selectedValue})`);
-        const selectedRecord = allHistory.find(record => record.id == selectedValue); // 使用 '==' 进行比较
-
-        if (selectedRecord) {
-            recordsToAnalyze.push(selectedRecord);
-            const employeeName = selectedRecord.userInfo?.name || `员工 ${selectedEmployeeId}`;
-            analysisTitle = `${employeeName} - ${formatSimpleDateTime(selectedRecord.timestamp || selectedRecord.endTime)} 测评记录`;
-            // // // console.log("[loadIndividualAnalysisFromSelection] Found specific record:", selectedRecord);
-        } else {
-            console.error(`[loadIndividualAnalysisFromSelection] Error: Could not find record with ID ${selectedValue}.`);
-            document.getElementById('individualAnalysisPlaceholder').innerHTML = 
-                `<p class="text-danger text-center mt-3"><i class="bi bi-exclamation-triangle-fill me-2"></i>错误：未找到 ID 为 ${selectedValue} 的测评记录。请检查记录是否存在或尝试选择其他记录。</p>`;
-            document.getElementById('individualAnalysisPlaceholder').style.display = 'block'; // 确保占位符可见
-            document.getElementById('individualAnalysisContent').classList.add('d-none'); // 确保内容隐藏
-            return; // 停止执行
-        }
-    }
-
-    // 如果最终没有找到任何可分析的记录
-    if (recordsToAnalyze.length === 0) {
-        // // // console.warn("[loadIndividualAnalysisFromSelection] No records found to analyze after filtering/finding.");
-        document.getElementById('individualAnalysisPlaceholder').innerHTML = 
-            '<p class="text-muted text-center mt-3">未找到符合条件的测评记录，无法加载分析。</p>'; 
-        document.getElementById('individualAnalysisPlaceholder').style.display = 'block'; // 确保占位符可见
-        document.getElementById('individualAnalysisContent').classList.add('d-none'); // 确保内容隐藏
-        return; // 停止执行
-    }
-
-    // **** 确认有数据后，再更新UI和调用分析 ****
-    // // // console.log(`[loadIndividualAnalysisFromSelection] Proceeding with ${recordsToAnalyze.length} record(s). Analysis Title: ${analysisTitle}`);
-
-    // 更新分析标题
-    document.getElementById('selectedEmployeeInfo').textContent = analysisTitle;
-
-    // **** 切换可见性：隐藏占位符，显示内容区域 ****
+    const employeeSelect = document.getElementById('employeeSelect');
+    const selectedValue = assessmentRecordSelect ? assessmentRecordSelect.value : null; // 记录ID(objectId)或'all'
+    const selectedEmployeeId = employeeSelect ? employeeSelect.value : null; // UserProfile objectId
     const placeholderElement = document.getElementById('individualAnalysisPlaceholder');
     const contentElement = document.getElementById('individualAnalysisContent');
 
-    // **** Add check for element validity ****
-    // // // console.log('[loadIndividualAnalysisFromSelection] Checking element references before visibility switch:');
-    // // // console.log('  Placeholder Element:', placeholderElement);
-    // // // console.log('  Content Element:', contentElement);
+    console.log(`[loadIndividualAnalysisFromSelection] START. EmployeeID: ${selectedEmployeeId}, Selected Record Value: ${selectedValue}`);
 
-    if (placeholderElement) {
-        // **** Force hide with inline style ****
-        placeholderElement.style.display = 'none'; 
-        // // // console.log('[loadIndividualAnalysisFromSelection] Applied placeholderElement.style.display = \'none\'.');
-    } else {
-        console.error('[loadIndividualAnalysisFromSelection] Placeholder element not found!');
-    }
-    
-    if (contentElement) {
-        contentElement.classList.remove('d-none');
-        // **** Force show with inline style ****
-        contentElement.style.display = 'block'; 
-        // // // console.log('[loadIndividualAnalysisFromSelection] Applied contentElement.style.display = \'block\'.');
-    } else {
-        console.error('[loadIndividualAnalysisFromSelection] Content element not found!');
-    }
+    // 清空现有内容并准备显示加载状态
+    clearIndividualAnalysis(); 
+    placeholderElement.innerHTML = '<p class="text-muted text-center mt-3"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>正在加载分析数据...</p>';
+    placeholderElement.style.display = 'block'; 
+    contentElement.style.display = 'none';
 
-    // **** Visibility Check Log (keep this) ****
-    if(contentElement) { // Only check if element was found
-        const computedDisplay = window.getComputedStyle(contentElement).display;
-        // // // console.log(`[loadIndividualAnalysisFromSelection] Visibility Check: #individualAnalysisContent computed display is now '${computedDisplay}'.`); 
-    }
-    // // // console.log("[loadIndividualAnalysisFromSelection] Switched visibility: Placeholder hidden, Content shown."); // Redundant with specific logs above
-
-    // 调用分析和渲染函数
-    generateIndividualAnalysis(recordsToAnalyze); 
-    // // // console.log("[loadIndividualAnalysisFromSelection] END.");
-}
-
-// **** 新增/重构：生成个人分析（处理单条或多条记录） ****
-function generateIndividualAnalysis(records) {
-    // // // // // // console.log(`[generateIndividualAnalysis] START. Received ${records?.length || 0} records.`);
-
-    if (!records || records.length === 0) {
-        console.warn("[generateIndividualAnalysis] Received empty records array. Aborting.");
-        // 理论上 loadIndividualAnalysisFromSelection 已经处理了空记录情况，这里是双重检查
-        clearIndividualAnalysis(); // 确保界面清空
+    if (!selectedValue || !selectedEmployeeId) {
+        console.warn("[loadIndividualAnalysisFromSelection] Missing employee or record selection.");
+        placeholderElement.innerHTML = '<p class="text-muted text-center mt-3">请在上方筛选并选择员工及测评记录。</p>';
         return;
     }
 
-    // 清除旧图表 (移到这里，确保每次分析前都清理)
-    // // // // // // console.log("[generateIndividualAnalysis] Clearing existing charts...");
-    clearChart('individualSectionChart');
-    clearChart('historicalScoresChart');
+    try {
+        let analysisTitle = '';
+        let recordsToAnalyze = []; // Array of Assessment objects
+        let detailsMap = {}; // { assessmentId: [AssessmentDetail objects] }
+        const userObject = AV.Object.createWithoutData('UserProfile', selectedEmployeeId);
 
-    // 清空列表内容（准备填充新数据）
-    document.getElementById('individualBestQuestionsList').innerHTML = '<li>加载中...</li>';
-    document.getElementById('individualWorstQuestionsList').innerHTML = '<li>加载中...</li>';
-    document.getElementById('individualTrainingSuggestions').innerHTML = '<li>加载中...</li>';
+        if (selectedValue === 'all') {
+            // --- 综合分析 --- 
+            console.log(`[loadIndividualAnalysisFromSelection] 查询员工 ${selectedEmployeeId} 的所有 Assessment 记录 (用于综合分析)...`);
+            const assessmentQuery = new AV.Query('Assessment');
+            assessmentQuery.equalTo('userPointer', userObject);
+            assessmentQuery.limit(1000); // 假设最多1000条，否则需分页
+            assessmentQuery.addAscending('endTime'); // 按时间升序，用于趋势图
+            assessmentQuery.include('userPointer'); // 包含 userPointer 以获取姓名
+            recordsToAnalyze = await assessmentQuery.find();
+            console.log(`[loadIndividualAnalysisFromSelection] 查询到 ${recordsToAnalyze.length} 条记录用于综合分析.`);
 
+            if (recordsToAnalyze.length > 0) {
+                // 获取姓名时进行空值检查
+                const userPointer = recordsToAnalyze[0].get('userPointer');
+                const employeeName = userPointer ? userPointer.get('name') : `员工 ${selectedEmployeeId}`; 
+                analysisTitle = `${employeeName} - 所有 ${recordsToAnalyze.length} 条记录综合分析`;
+            } else {
+                 analysisTitle = `员工 ${selectedEmployeeId} 无可分析的记录`;
+            }
+            // 综合分析目前不主动加载 details
 
-    if (records.length === 1) {
-        // --- 单次测评分析 --- 
-        const record = records[0];
-        // // // // // // console.log("[generateIndividualAnalysis] Analyzing SINGLE record:", record.id);
-        
-        // **** 新增：获取该员工的所有历史记录，用于建议生成 ****
-        const employeeId = record?.userInfo?.employeeId || record?.userInfo?.id;
-        let relevantHistory = [];
-        if (employeeId) {
-             const allHistory = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-             relevantHistory = allHistory
-                .filter(r => (r?.userInfo?.employeeId || r?.userInfo?.id) == employeeId)
-                .sort((a, b) => new Date(a.timestamp || a.endTime) - new Date(b.timestamp || b.endTime)); // Sort oldest to newest
-            // // // // // // console.log(`[generateIndividualAnalysis] Found ${relevantHistory.length} total records for employee ${employeeId} for suggestion generation.`);
+        } else {
+            // --- 单次分析 --- 
+            const assessmentId = selectedValue;
+            console.log(`[loadIndividualAnalysisFromSelection] 查询单条 Assessment 记录: ${assessmentId}...`);
+            const assessmentQuery = new AV.Query('Assessment');
+            assessmentQuery.include('userPointer'); // 包含用户信息
+            const selectedRecord = await assessmentQuery.get(assessmentId);
+            console.log("[loadIndividualAnalysisFromSelection] 成功获取单条 Assessment 记录.");
+
+            if (selectedRecord) {
+                recordsToAnalyze.push(selectedRecord); // 分析函数期望数组
+                // 获取姓名时进行空值检查
+                const userPointer = selectedRecord.get('userPointer');
+                const employeeName = userPointer ? userPointer.get('name') : `员工 ${selectedEmployeeId}`;
+                analysisTitle = `${employeeName} - ${formatSimpleDateTime(selectedRecord.get('endTime'))} 测评记录`;
+                console.log(`[loadIndividualAnalysisFromSelection] 设置标题: ${analysisTitle}`);
+
+                // 加载该次测评的详细题目数据 (AssessmentDetail)
+                console.log(`[loadIndividualAnalysisFromSelection] 查询 Assessment ${assessmentId} 关联的 AssessmentDetail...`);
+                const detailQuery = new AV.Query('AssessmentDetail');
+                detailQuery.equalTo('assessmentPointer', selectedRecord); // 关键关联
+                detailQuery.limit(1000); // 假设一次测评题目不超过1000
+                const details = await detailQuery.find();
+                detailsMap[assessmentId] = details; // 存储详情
+                console.log(`[loadIndividualAnalysisFromSelection] 查询到 ${details.length} 条 AssessmentDetail 记录.`);
+
+            } else {
+                console.error(`[loadIndividualAnalysisFromSelection] 错误: 未能在云端找到 ID 为 ${assessmentId} 的记录.`);
+                throw new Error(`未找到 ID 为 ${assessmentId} 的测评记录`); // 抛出错误以便 catch 处理
+            }
         }
-        // **** 历史记录获取结束 ****
-        
-        // 1. 板块得分分布 (包含未得分)
-        // // // // // // console.log("[generateIndividualAnalysis] Calculating individual section performance...");
-        const sectionPerformanceResult = calculateIndividualSectionPerformance(record); 
 
-        // **** 清空旧的小饼图容器 ****
-        const breakdownContainer = document.getElementById('individualSectionBreakdownCharts');
-        if (breakdownContainer) breakdownContainer.innerHTML = '';
+        // --- 数据获取完毕，准备分析 --- 
 
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering individual section chart (with unscored)...");
-        // **** 调用修改后的图表渲染函数，传递完整结果对象 ****
-        renderIndividualSectionChart(sectionPerformanceResult); // Render the main doughnut chart
-
-        // **** 新增：渲染每个板块的小饼图 ****
-        if (sectionPerformanceResult.performance && breakdownContainer) {
-            Object.entries(sectionPerformanceResult.performance).forEach(([sectionName, data]) => {
-                // **** 添加日志 ****
-                // // // // // // console.log(`[generateIndividualAnalysis] Processing section for breakdown chart: ${sectionName}`, data);
-                if (data.max > 0) { // Only render if the section has scorable questions
-                    // // // // // // console.log(`  -> Calling renderSectionBreakdownChart for ${sectionName}`); // **** 添加日志 ****
-                    renderSectionBreakdownChart(sectionName, data.score, data.max, 'individualSectionBreakdownCharts');
-                } else {
-                     // // // // // // console.log(`  -> Skipping render for ${sectionName} because max score is 0.`); // **** 添加日志 ****
-                }
-            });
+        if (recordsToAnalyze.length === 0) {
+            console.warn("[loadIndividualAnalysisFromSelection] 未找到可分析的记录.");
+            placeholderElement.innerHTML = '<p class="text-muted text-center mt-3">未找到符合条件的测评记录，无法加载分析。</p>';
+            return;
         }
-        // **** 渲染小饼图结束 ****
 
-        // 2. 题目掌握情况
-        // // // // // // console.log("[generateIndividualAnalysis] Calculating individual question performance...");
-        const questionPerformance = calculateIndividualQuestionPerformance(record);
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering question performance lists...");
-        renderQuestionPerformanceLists(questionPerformance.best, 'individualBestQuestionsList');
-        renderQuestionPerformanceLists(questionPerformance.worst, 'individualWorstQuestionsList');
+        // 更新分析标题
+        document.getElementById('selectedEmployeeInfo').textContent = analysisTitle;
 
-        // 3. 历史成绩对比 (对于单次，只显示本次得分点)
-        // // // // // // console.log("[generateIndividualAnalysis] Preparing single history point...");
-        const singleHistoryPoint = [{
-            timestamp: record.timestamp || record.endTime,
-            scoreRate: record.score?.scoreRate || 0
-        }];
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering historical scores chart (single point)...");
-        renderHistoricalScoresChart(singleHistoryPoint);
-        
-        // 4. 个人培训建议 (基于本次，并结合历史)
-        // // // // // // console.log("[generateIndividualAnalysis] Generating individual training suggestions...");
-        const suggestions = generateIndividualTrainingSuggestions(record, relevantHistory); 
-        // **** 新增日志：检查接收到的 suggestions 值 ****
-        // // // // // // console.log("[generateIndividualAnalysis] Received suggestions:", suggestions);
-        
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering training suggestions...");
-        renderTrainingSuggestions(suggestions, 'individualTrainingSuggestions');
+        // 显示内容区域，隐藏加载提示
+        placeholderElement.style.display = 'none';
+        contentElement.style.display = 'block';
+        console.log("[loadIndividualAnalysisFromSelection] 切换可见性: Placeholder hidden, Content shown.");
 
-    } else {
-        // --- 多次测评综合分析 --- 
-        // // // // // // console.log(`[generateIndividualAnalysis] Analyzing COMBINED ${records.length} records.`);
-        
-        // 1. 平均板块得分率
-        // // // // // // console.log("[generateIndividualAnalysis] Calculating average section scores...");
-        const avgSectionScores = calculateAverageSectionScores(records);
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering average section chart (as Bar chart)...");
-        // **** 综合分析也用 Bar chart 显示平均得分率 ****
-        renderPositionSectionMasteryChart(avgSectionScores, `平均板块得分率 (%) - ${records.length}条记录`);
-        
-        // 2. 综合题目掌握情况
-        // // // // // // console.log("[generateIndividualAnalysis] Analyzing combined question performance...");
-        const combinedQuestionPerformance = analyzeCombinedQuestionPerformance(records);
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering combined question performance lists...");
-        renderQuestionPerformanceLists(combinedQuestionPerformance.best, 'individualBestQuestionsList', true); 
-        renderQuestionPerformanceLists(combinedQuestionPerformance.worst, 'individualWorstQuestionsList', true);
+        // **** 调用分析和渲染函数 (generateIndividualAnalysis 仍需修改以接收新数据) ****
+        // **** 传递 recordsToAnalyze (Assessment 对象数组) 和 detailsMap ****
+        generateIndividualAnalysis(recordsToAnalyze, detailsMap); 
+        console.log("[loadIndividualAnalysisFromSelection] END.");
 
-        // 3. 历史成绩趋势
-        // // // // // // console.log("[generateIndividualAnalysis] Preparing history data for trend chart...");
-        const historyData = records.map(r => ({ 
-            timestamp: r.timestamp || r.endTime, 
-            scoreRate: r.score?.scoreRate || 0 
-        })).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp)); // 确保按时间排序
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering historical scores trend chart...");
-        renderHistoricalScoresChart(historyData);
-        
-        // 4. 综合培训建议
-        // // // // // // console.log("[generateIndividualAnalysis] Generating combined training suggestions...");
-        const combinedSuggestions = generateCombinedTrainingSuggestions(records); // 确保此函数存在且正确
-        // **** 新增日志：检查接收到的 combinedSuggestions 值 ****
-        // // // // // // console.log("[generateIndividualAnalysis] Received combined suggestions:", combinedSuggestions);
-        
-        // // // // // // console.log("[generateIndividualAnalysis] Rendering combined training suggestions...");
-        renderTrainingSuggestions(combinedSuggestions, 'individualTrainingSuggestions');
+    } catch (error) {
+        console.error("[loadIndividualAnalysisFromSelection] 加载个人分析数据失败:", error);
+        placeholderElement.innerHTML = `<p class="text-danger text-center mt-3"><i class="bi bi-exclamation-triangle-fill me-2"></i>加载分析失败: ${error.message}</p>`;
+        placeholderElement.style.display = 'block'; // 确保错误信息可见
+        contentElement.style.display = 'none'; // 隐藏内容区域
     }
-    // // // // // // console.log("[generateIndividualAnalysis] END.");
+}
+
+// **** generateIndividualAnalysis 及后续函数仍需修改 ****
+function generateIndividualAnalysis(records /*, detailsMap = {} */) {
+    // ... existing code ...
 }
 
 // 计算个人单次测评各板块得分 (保持不变)
