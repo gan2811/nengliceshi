@@ -204,16 +204,50 @@ AV.Cloud.define('pauseAssessmentCloud', async (request) => {
         }
 
         // --- 填充或更新 Assessment 数据 ---
-        // 用户信息
-        if (assessmentData.userInfo) {
-            const User = AV.Object.extend('_User');
-            const userPointer = User.createWithoutData(assessmentData.userInfo.objectId || user?.id);
-            assessment.set('userPointer', userPointer);
-            assessment.set('userName', assessmentData.userInfo.name);
-            assessment.set('userEmployeeId', assessmentData.userInfo.employeeId);
-            assessment.set('userDepartment', assessmentData.userInfo.department);
-            assessment.set('userStation', assessmentData.userInfo.station);
+        // **修改：改为处理 UserProfile，与 submitAssessmentCloud 对齐**
+        let userProfile;
+        if (assessmentData.userInfo && assessmentData.userInfo.employeeId) {
+            const userQuery = new AV.Query('UserProfile');
+            const employeeIdNum = parseInt(assessmentData.userInfo.employeeId, 10);
+            if (!isNaN(employeeIdNum)) {
+                userQuery.equalTo('employeeId', employeeIdNum);
+                try {
+                    userProfile = await userQuery.first({ useMasterKey: true });
+                    if (!userProfile) {
+                        console.log(`[pauseAssessmentCloud] UserProfile not found (employeeId: ${employeeIdNum}), creating new...`);
+                        userProfile = new AV.Object('UserProfile');
+                        userProfile.set('employeeId', employeeIdNum);
+                        userProfile.set('name', assessmentData.userInfo.name || '未知'); // 使用提供的信息
+                        // 可以选择性地设置其他信息，如果前端提供了的话
+                        if(assessmentData.userInfo.station) userProfile.set('stationCode', assessmentData.userInfo.station);
+                        if(assessmentData.position) userProfile.set('positionCode', assessmentData.position);
+
+                        userProfile = await userProfile.save(null, { useMasterKey: true });
+                        console.log(`[pauseAssessmentCloud] New UserProfile created: ${userProfile.id}`);
+                    } else {
+                        console.log(`[pauseAssessmentCloud] Existing UserProfile found: ${userProfile.id}`);
+                        // 可选：如果找到现有用户，是否要用前端传来的信息更新？暂时不更新。
+                    }
+                    // 设置指向 UserProfile 的指针
+                    assessment.set('userPointer', AV.Object.createWithoutData('UserProfile', userProfile.id));
+                } catch (userError) {
+                    console.error(`[pauseAssessmentCloud] Error finding or creating UserProfile for employeeId ${employeeIdNum}:`, userError);
+                    assessment.unset('userPointer'); // 出错则不设置指针
+                }
+            } else {
+                 console.warn(`[pauseAssessmentCloud] Invalid employeeId format: ${assessmentData.userInfo.employeeId}. Cannot process UserProfile.`);
+                 assessment.unset('userPointer');
+            }
+        } else {
+             console.warn('[pauseAssessmentCloud] No userInfo or employeeId provided in assessmentData. Cannot process UserProfile.');
+             assessment.unset('userPointer');
         }
+        // 保留直接设置字段作为补充或备用
+        assessment.set('userName', assessmentData.userInfo?.name || null);
+        assessment.set('userEmployeeId', assessmentData.userInfo?.employeeId || null);
+        assessment.set('userDepartment', assessmentData.userInfo?.department || null);
+        assessment.set('userStation', assessmentData.userInfo?.station || null);
+
         // 岗位信息
         if (assessmentData.position) {
             assessment.set('positionCode', assessmentData.position);
@@ -257,9 +291,11 @@ AV.Cloud.define('pauseAssessmentCloud', async (request) => {
         const existingDetailsMap = new Map();
 
         // 如果是更新，先查询已有的 Detail 记录
-        if (assessment.existed()) {
+        if (assessment) {
+            // 确保在查询 Detail 时使用正确的 Assessment 对象 (应该是 assessment 而不是 savedAssessment)
+            // 因为 savedAssessment 是在之后才通过 assessment.save() 得到的
             const detailQuery = new AV.Query('AssessmentDetail');
-            detailQuery.equalTo('assessmentPointer', savedAssessment);
+            detailQuery.equalTo('assessmentPointer', assessment); // 使用 assessment
             detailQuery.limit(1000); // Assume less than 1000 questions
             const existingDetails = await detailQuery.find({ useMasterKey: true });
             existingDetails.forEach(detail => {
@@ -273,28 +309,44 @@ AV.Cloud.define('pauseAssessmentCloud', async (request) => {
         }
 
         for (const question of questions) {
-            const questionId = String(question.id);
-            const answer = answers[questionId] || {};
-            let detailObject = existingDetailsMap.get(questionId);
+            // 修正：确保 questionId 是 Number 类型，符合数据库定义
+            let questionIdAsNumber;
+            try {
+                // 尝试将前端传来的 question.id 转换为数字
+                // 前端 question.id 可能已经是数字，也可能是数字字符串
+                questionIdAsNumber = parseInt(question.id, 10); 
+                if (isNaN(questionIdAsNumber)) {
+                     console.warn(`[pauseAssessmentCloud] Invalid numeric format for question.id: ${question.id}. Skipping this detail.`);
+                     continue; // 跳过这个无效的题目详情
+                }
+            } catch (parseError) {
+                 console.warn(`[pauseAssessmentCloud] Error parsing question.id ${question.id} to number:`, parseError, ". Skipping this detail.");
+                 continue; // 跳过这个无法解析的题目详情
+            }
+
+            // 使用转换后的数字 ID 进行后续操作
+            let detailObject = existingDetailsMap.get(questionIdAsNumber); // 使用数字 ID 查找
 
             if (!detailObject) {
                 // 如果找不到旧的，创建新的
                 detailObject = new AssessmentDetail();
                 detailObject.set('assessmentPointer', savedAssessment); // Link to the main assessment
-                detailObject.set('questionId', questionId);
+                detailObject.set('questionId', questionIdAsNumber); // **** 保存 Number 类型 ****
             } else {
-                 console.log(`[pauseAssessmentCloud] Updating existing detail for questionId ${questionId}.`);
+                 console.log(`[pauseAssessmentCloud] Updating existing detail for questionId ${questionIdAsNumber}.`);
             }
 
             // 更新或设置 Detail 数据
             detailObject.set('questionContent', question.content || '');
             detailObject.set('standardScore', question.standardScore !== undefined ? question.standardScore : null);
-            detailObject.set('score', answer.score !== undefined ? answer.score : null);
-            detailObject.set('comment', answer.comment || '');
-            detailObject.set('durationSeconds', Number(answer.duration) || 0);
-            detailObject.set('startTime', answer.startTime ? new Date(answer.startTime) : null);
+            // 修正：从 answer 对象中提取 score 属性值
+            const currentAnswer = answers[questionIdAsNumber]; // 获取当前问题的答案对象
+            detailObject.set('score', currentAnswer && currentAnswer.score !== undefined ? currentAnswer.score : null);
+            // 使用 currentAnswer 访问其他属性，更清晰
+            detailObject.set('comment', currentAnswer && currentAnswer.comment ? currentAnswer.comment : '');
+            detailObject.set('durationSeconds', Number(currentAnswer && currentAnswer.duration) || 0);
+            detailObject.set('startTime', currentAnswer && currentAnswer.startTime ? new Date(currentAnswer.startTime) : null);
             detailObject.set('knowledgeSource', question.knowledgeSource || null);
-            detailObject.set('standardAnswer', question.standardAnswer || null);
             detailObject.set('section', question.section || null);
             detailObject.set('type', question.type || null);
 
