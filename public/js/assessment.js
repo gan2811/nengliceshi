@@ -993,15 +993,26 @@ async function submitAssessment() {
     }
 }
 
-// **** 修改：暂存测评 ****
-function pauseAssessment() {
+// **** 修改：暂存测评 (增加云端同步) ****
+async function pauseAssessment() { // <-- Make the function async
+    // 0. 禁用按钮，显示加载状态
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) {
+        pauseBtn.disabled = true;
+        pauseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 暂存中...';
+    }
+
     // 1. 记录当前状态
     if (!currentAssessmentData) {
         console.error("无法暂存：没有当前的测评数据。");
         alert("没有正在进行的测评可以暂存。");
+        if (pauseBtn) { // Re-enable button on early exit
+            pauseBtn.disabled = false;
+            pauseBtn.innerHTML = '<i class="bi bi-pause-circle me-1"></i> 暂存测评';
+        }
         return;
     }
-    
+
     // **** 保存最后一次答案和时间 ****
     saveCurrentAnswer(true); // Save current state before pausing (isNavigating=true to skip validation if needed)
     recordPreviousQuestionTime(); // Record time for the question before the current one
@@ -1024,48 +1035,100 @@ function pauseAssessment() {
         const startTime = new Date(currentAssessmentData.startTime);
         const now = new Date();
         elapsedSeconds = Math.floor((now - startTime) / 1000);
-    } 
+    }
 
-    // 3. 更新测评数据状态
+    // 3. 更新测评数据状态 (本地副本)
     currentAssessmentData.status = 'paused';
     currentAssessmentData.elapsedSeconds = elapsedSeconds; // 保存总流逝时间
-    currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
+    currentAssessmentData.currentQuestionIndex = currentQuestionIndex;
     currentAssessmentData.timestamp = new Date().toISOString(); // 更新时间戳为暂存时间
     // totalActiveSeconds 已经在上面更新过了
 
-    // 4. 保存到历史记录 
+    // **** 新增：调用云函数保存暂停状态 ****
+    let cloudSaveSuccess = false;
+    try {
+        console.log("[pauseAssessment] Calling pauseAssessmentCloud cloud function...");
+        const cloudResultId = await AV.Cloud.run('pauseAssessmentCloud', { assessmentData: currentAssessmentData });
+        console.log("[pauseAssessment] Cloud function call successful. Returned ObjectId:", cloudResultId);
+        // 可选：如果云端保存成功，可以更新本地数据的 ID 为云端返回的 objectId，但这可能引起混淆，暂时不修改
+        // currentAssessmentData.cloudObjectId = cloudResultId; // 示例：添加云端ID
+        cloudSaveSuccess = true;
+    } catch (error) {
+        console.error('[pauseAssessment] 调用云函数 pauseAssessmentCloud 时出错:', error);
+        let errorMessage = '将暂停状态同步到云端失败！';
+        if (error.code && error.message) {
+            errorMessage += `\n错误 (${error.code}): ${error.message}`;
+        } else if (typeof error === 'string') {
+            errorMessage += `\n详情: ${error}`;
+        }
+        errorMessage += '\n\n测评进度仍会保存在本地。';
+        alert(errorMessage);
+        // 即使云端失败，也继续本地保存
+    }
+    // **** 云函数调用结束 ****
+
+    // 4. 保存到本地历史记录 (无论云端是否成功，都保存本地)
+    console.log("[pauseAssessment] Saving state to local storage history...");
     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-     const historyRecord = {
-        id: currentAssessmentData.id,
-        userInfo: currentAssessmentData.userInfo, 
+    // 使用更新过的 currentAssessmentData 创建历史记录
+    const historyRecord = {
+        id: currentAssessmentData.id, // Keep original frontend ID for local consistency
+        userInfo: currentAssessmentData.userInfo,
         position: currentAssessmentData.position,
-        assessor: currentAssessmentData.assessor || null, // 可能还没有测评人
+        assessor: currentAssessmentData.assessor || null,
         timestamp: currentAssessmentData.timestamp, // Use pause time
-        startTime: currentAssessmentData.startTime, // **** 添加原始 startTime ****
+        startTime: currentAssessmentData.startTime,
         duration: Math.round((currentAssessmentData.totalActiveSeconds || 0) / 60),
         score: { totalScore: null, maxScore: currentAssessmentData.maxScore || null, scoreRate: null },
         questions: currentAssessmentData.questions,
         answers: currentAssessmentData.answers,
-        status: 'paused',
-        elapsedSeconds: currentAssessmentData.elapsedSeconds, // 保存总流逝秒数
+        status: 'paused', // Always paused for this function
+        elapsedSeconds: currentAssessmentData.elapsedSeconds,
         currentQuestionIndex: currentAssessmentData.currentQuestionIndex,
-        totalActiveSeconds: currentAssessmentData.totalActiveSeconds // **** 保存活动总秒数 ****
+        totalActiveSeconds: currentAssessmentData.totalActiveSeconds,
+        // cloudObjectId: currentAssessmentData.cloudObjectId || null // 可选：包含云端ID
     };
 
     // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
     const existingIndex = history.findIndex(item => item.id === historyRecord.id);
     if (existingIndex > -1) {
         history[existingIndex] = historyRecord; // Update existing paused record
+        console.log(`[pauseAssessment] Updated existing paused record in local history (ID: ${historyRecord.id}).`);
     } else {
         history.push(historyRecord); // Add as new paused record
+        console.log(`[pauseAssessment] Added new paused record to local history (ID: ${historyRecord.id}).`);
     }
-    localStorage.setItem('assessmentHistory', JSON.stringify(history));
+    try {
+        localStorage.setItem('assessmentHistory', JSON.stringify(history));
+        console.log("[pauseAssessment] Local history saved successfully.");
+    } catch (e) {
+        console.error("[pauseAssessment] Error saving to local storage history:", e);
+        alert("保存测评进度到本地历史记录失败！请检查浏览器存储空间。"
+              + "\n错误: " + e.message);
+        // 如果本地保存失败，恢复按钮状态并停止
+        if (pauseBtn) {
+            pauseBtn.disabled = false;
+            pauseBtn.innerHTML = '<i class="bi bi-pause-circle me-1"></i> 暂存测评';
+        }
+        return;
+    }
+
 
     // 5. 清除当前测评状态并重定向
+    console.log("[pauseAssessment] Removing current assessment state from local storage.");
     localStorage.removeItem('currentAssessment');
-    // console.log("Assessment paused and saved to history. Redirecting...");
-    alert("测评已暂存！"); // Inform user
+
+    // 根据云端保存结果显示不同提示
+    if (cloudSaveSuccess) {
+        alert("测评已暂存到本地和云端！");
+    } else {
+        alert("测评已暂存到本地（云端同步失败）。");
+    }
+
+    console.log("[pauseAssessment] Redirecting to history.html...");
     window.location.href = 'history.html'; // Redirect to history page
+
+    // 注意：页面即将跳转，无需恢复按钮状态
 }
 
 // 启动计时器 (修改：记录会话开始时间)

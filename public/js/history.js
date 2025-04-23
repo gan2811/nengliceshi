@@ -303,16 +303,16 @@ async function syncAllFilteredCloudDataToLocal() {
                     scoreRate: record.get('scoreRate'),
                 },
                  questions: details.map(d => ({
-                     id: d.get('questionOriginId') || d.id,
+                     id: d.get('questionId'),
                      content: d.get('questionContent'),
                      standardScore: d.get('standardScore'),
                      standardAnswer: d.get('standardAnswer'),
                      section: d.get('section'),
-                     type: d.get('questionType'),
+                     type: d.get('type'),
                      knowledgeSource: d.get('knowledgeSource')
                  })),
                 answers: details.reduce((acc, d) => {
-                    const qId = d.get('questionOriginId') || d.id;
+                    const qId = d.get('questionId');
                     acc[qId] = {
                         score: d.get('score'),
                         comment: d.get('comment'),
@@ -942,27 +942,29 @@ async function resumeAssessment(assessmentId) {
 
          // 3. Build the structure needed by assessment.js
          const userInfo = assessmentRecord.get('userPointer');
+         const frontendId = assessmentRecord.get('frontendId'); // **** 获取前端 ID ****
          const assessmentToResume = {
-              id: assessmentRecord.id,
+              id: frontendId || assessmentRecord.id, // **** 使用 frontendId 作为主 ID ****
               userInfo: userInfo ? {
                  name: userInfo.get('name'),
                  employeeId: userInfo.get('employeeId'),
                  station: userInfo.get('stationCode'),
-                 position: assessmentRecord.get('positionCode'),
+                 position: assessmentRecord.get('positionCode'), // Use positionCode from Assessment
                  positionName: getPositionName(assessmentRecord.get('positionCode')),
+                 objectId: userInfo.id // **** 添加 user objectId ****
               } : {},
               position: assessmentRecord.get('positionCode'),
               questions: details.map(d => ({
-                  id: d.get('questionOriginId') || d.id,
+                 id: d.get('questionId'), // **** 统一使用 questionId ****
                   content: d.get('questionContent'),
                   standardScore: d.get('standardScore'),
                   standardAnswer: d.get('standardAnswer'),
                   section: d.get('section'),
-                  type: d.get('questionType'),
+                  type: d.get('type'), // **** 统一使用 type ****
                   knowledgeSource: d.get('knowledgeSource')
               })).sort((a,b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999)), // Add sorting if orderIndex exists
               answers: details.reduce((acc, d) => {
-                  const qId = d.get('questionOriginId') || d.id;
+                  const qId = d.get('questionId'); // **** 统一使用 questionId ****
                   acc[qId] = {
                       score: d.get('score'), // Load existing score
                       comment: d.get('comment') || '', // Load existing comment
@@ -1040,7 +1042,6 @@ function checkLocalRecords() {
             if (record.status === 'paused') {
                 statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
                 actionsHtml = `
-                    <button class="btn btn-sm btn-outline-primary me-1" onclick="resumeLocalAssessment('${record.id}')"><i class="bi bi-play-circle"></i> 继续</button>
                     <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
                 `;
             } else if (record.status === 'failed_to_submit') {
@@ -1093,40 +1094,6 @@ function deleteLocalRecord(recordIdToDelete) {
          console.warn("[deleteLocalRecord] Could not find local record to delete with ID:", recordIdToDelete);
          alert("删除失败，未找到对应的本地记录。");
      }
-}
-
-// **** 新增：继续本地暂存的测评 ****
-function resumeLocalAssessment(recordIdToResume) {
-    console.log(`[resumeLocalAssessment] Resuming assessment with local ID: ${recordIdToResume}`);
-    let history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    const assessmentToResume = history.find(record => record.id == recordIdToResume && record.status === 'paused');
-
-    if (assessmentToResume) {
-        // 检查是否有正在进行的测评
-        if (localStorage.getItem('currentAssessment')) {
-            const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
-            // 如果当前的就是要恢复的，或者当前的是已提交/失败的，可以直接覆盖
-            if (currentData.id == recordIdToResume || currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
-                 // 可以直接覆盖
-            } else if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
-                return; // 用户取消
-            }
-        }
-
-        // 将选中的测评记录存入 currentAssessment
-        localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
-        
-        // 从历史记录中移除暂存状态（推荐）
-        history = history.filter(record => record.id != recordIdToResume);
-        localStorage.setItem('assessmentHistory', JSON.stringify(history));
-
-        console.log("Assessment data loaded into currentAssessment. Redirecting...");
-        window.location.href = 'assessment.html'; // 跳转到测评页面
-    } else {
-        console.error(`无法找到 ID 为 ${recordIdToResume} 的可继续的本地测评记录。`);
-        alert("无法继续测评，记录可能已被删除或状态已改变。");
-        checkLocalRecords(); // 刷新本地列表显示
-    }
 }
 
 // **** 新增：重试提交失败的记录 ****
