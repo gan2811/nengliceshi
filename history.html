@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大礼堂中心站能力测试评分系统 - 历史记录</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <style>
+        .page-main-title {
+            font-size: 2.5rem; /* Larger font size */
+            font-weight: bold; /* Bold */
+            background: linear-gradient(90deg, #7928ca, #6f42c1); /* Purple gradient */
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 1.5rem; /* Add some top margin */
+            margin-bottom: 0.5rem; /* Space before the line */
+            padding-bottom: 0.5rem; /* Additional space below text, before line visually */
+            display: inline-block; /* Needed for background-clip */
+        }
+        .purple-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            width: 80px; /* Adjust width as needed */
+            border-radius: 2px;
+            margin-bottom: 2rem; /* Space after the line, increasing distance */
+        }
+        /* Ensure search input height matches select */
+        .filter-section .input-group .form-control {
+            height: calc(1.5em + 0.75rem + 2px); /* Match default BS form control height */
+        }
+        .filter-section .input-group .btn {
+            height: calc(1.5em + 0.75rem + 2px); /* Match default BS form control height */
+        }
+        /* Style for table action buttons */
+        .history-action-btn {
+            padding: 0.35rem 0.85rem; /* Adjust padding for better touch */
+            border-radius: 100px; 
+            margin-left: 5px; 
+        }
+
+        /* Responsive styles for the actions column in the history table */
+        @media (max-width: 767.98px) { /* Target screens smaller than md breakpoint */
+            #historyTableBody td:last-child { /* Target the last cell (actions) in the body */
+                min-width: 90px;        /* Give the actions column a bit more minimum space */
+                display: flex;          /* Use flexbox for layout inside the cell */
+                flex-direction: column; /* Stack buttons vertically */
+                align-items: stretch;   /* Make buttons stretch to fill cell width */
+                gap: 0.3rem;            /* Add a small gap between stacked buttons */
+            }
+            /* Ensure buttons take full width and center text */
+            #historyTableBody td:last-child .history-action-btn {
+                 width: 100%; 
+                 text-align: center; 
+                 margin-left: 0; /* Remove left margin when stacked */
+            } 
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Navigation Bar Moved Above Title -->
+        <nav class="page-navigation-metro">
+            <ul>
+                <li class="station">
+                    <a href="assessment.html" class="station-link" title="开始测评">
+                        <span class="station-icon"><i class="bi bi-pencil-square"></i></span>
+                        <span class="station-label">开始测评</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station active-station"> <!-- History is active -->
+                    <a href="history.html" class="station-link" title="历史记录">
+                        <span class="station-icon"><i class="bi bi-clock-history"></i></span>
+                        <span class="station-label">历史记录</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="analysis.html" class="station-link" title="数据分析">
+                        <span class="station-icon"><i class="bi bi-bar-chart-line-fill"></i></span>
+                        <span class="station-label">数据分析</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="question-bank.html" class="station-link" title="题库管理">
+                        <span class="station-icon"><i class="bi bi-archive"></i></span>
+                        <span class="station-label">题库管理</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <!-- Page Title and Home/Export Button -->
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="title-container">
+                <h2 class="page-main-title"><i class="bi bi-clock-history me-2"></i>历史记录</h2>
+                <div class="purple-accent-line"></div>
+            </div>
+            <!-- **** Move Export button here, before Home button **** -->
+            <div class="d-flex flex-wrap gap-2">
+                 <!-- **** 移除此按钮 ****
+                 <button type="button" class="btn btn-outline-success" id="exportListBtn" onclick="exportHistoryList()">
+                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
+                 </button>
+                 -->
+                <button id="backToIndexBtn" class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
+                    <i class="bi bi-house-door me-1"></i>返回首页
+                </button>
+            </div>
+        </div>
+
+        <!-- Filter Section -->
+        <div class="filter-section mb-4 p-3 rounded shadow-sm">
+            <!-- 筛选条件 -->
+            <div class="row mb-4 g-3">
+                <div class="col-md-3 mb-3 mb-md-0">
+                    <label class="form-label"><i class="bi bi-calendar me-1"></i>开始日期</label>
+                    <input type="date" class="form-control" id="startDate">
+                </div>
+                <div class="col-md-3 mb-3 mb-md-0">
+                    <label class="form-label"><i class="bi bi-calendar me-1"></i>结束日期</label>
+                    <input type="date" class="form-control" id="endDate">
+                </div>
+                <div class="col-md-3 mb-3 mb-md-0">
+                    <label class="form-label"><i class="bi bi-person-badge me-1"></i>岗位</label>
+                    <select class="form-select" id="positionFilter">
+                        <option value="">全部岗位</option>
+                        <option value="duty_station">值班站长</option>
+                        <option value="station_duty">车站值班员</option>
+                        <option value="station_safety">站务安全员</option>
+                    </select>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label"><i class="bi bi-search me-1"></i>搜索</label>
+                    <!-- Ensure input-group elements align vertically if needed -->
+                    <div class="input-group">
+                        <input type="text" class="form-control" id="searchInput" placeholder="姓名/工号">
+                        <button class="btn btn-outline-secondary" type="button" onclick="searchRecords()">
+                            <i class="bi bi-search"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 历史记录表格 -->
+            <div class="table-responsive">
+                <table class="table table-striped table-hover">
+                    <thead>
+                        <tr>
+                            <th scope="col" id="th-seq">序号</th>
+                            <th scope="col" id="th-rank" onclick="sortTable('rank')" style="cursor: pointer;">排名 <i class="bi bi-arrow-down-up small"></i></th>
+                            <th scope="col" id="th-timestamp" onclick="sortTable('timestamp')" style="cursor: pointer;">测评时间 <i class="bi bi-arrow-down-up small"></i></th>
+                            <th scope="col" id="th-name">姓名</th>
+                            <th scope="col" id="th-employeeId">工号</th>
+                            <th scope="col" id="th-position">岗位</th>
+                            <th scope="col" id="th-duration">测评用时</th>
+                            <th scope="col" id="th-totalScore" onclick="sortTable('totalScore')" style="cursor: pointer;">总分 <i class="bi bi-arrow-down-up small"></i></th>
+                            <th scope="col" id="th-scoreRate" onclick="sortTable('scoreRate')" style="cursor: pointer;">得分率 <i class="bi bi-arrow-down-up small"></i></th>
+                            <th scope="col" id="th-actions">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="historyTableBody"></tbody>
+                </table>
+            </div>
+
+            <!-- 分页 -->
+            <nav aria-label="Page navigation" class="mt-4">
+                <ul class="pagination justify-content-center" id="pagination"></ul>
+            </nav>
+
+            <!-- 操作按钮区域 -->
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3"> <!-- 修改：使用 Grid 和 Flex 响应式布局 -->
+                <button id="clearHistoryBtn" class="btn btn-danger btn-sm"><i class="bi bi-trash me-1"></i> 清空历史记录</button>
+                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出历史记录</button>
+                <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()"> <!-- 调整样式和间距 -->
+                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
+                 </button>
+                <button id="uploadHistoryBtn" class="btn btn-primary btn-sm"><i class="bi bi-cloud-upload me-1"></i> 上传历史记录到云端</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 详情模态框 -->
+    <div class="modal fade" id="detailModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="bi bi-file-text me-2"></i>测评详情</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body" id="detailModalBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                        <i class="bi bi-x-lg me-1"></i>关闭
+                    </button>
+                    <button type="button" class="btn btn-primary" onclick="exportDetail()">
+                        <i class="bi bi-download me-1"></i>导出
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/history.js"></script>
+</body>
+</html> 

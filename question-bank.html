@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>大礼堂中心站能力测试评分系统 - 题库维护</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <style>
+        /* Add title styles here */
+        .page-main-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            display: inline-block;
+        }
+        .purple-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            width: 80px;
+            border-radius: 2px;
+            margin-bottom: 2rem;
+        }
+
+        /* Remove specific color styles - Now using theme variables */
+        /*
+        :root {
+            --color-duty-station: #0d6efd; 
+            --color-station-duty: #6f42c1; 
+            --color-station-safety: #198754; 
+            --color-default-position: #6c757d; 
+        }
+        */
+        .position-btn {
+            transition: all 0.3s ease;
+            border-width: 1px;
+            /* Default to outline using secondary color */
+            color: var(--bs-secondary);
+            border-color: var(--bs-secondary);
+            background-color: white;
+        }
+        .position-btn:hover {
+            opacity: 0.8;
+            background-color: #e9ecef; /* Light gray on hover */
+        }
+
+        /* Active style: Purple background */
+        .position-btn.active {
+             background-color: #6f42c1 !important; /* Purple */
+             border-color: #6f42c1 !important;     /* Purple */
+             color: white !important;
+             box-shadow: 0 0 8px rgba(111, 66, 193, 0.4); /* Purple shadow */
+        }
+        /* Ensure non-active buttons are outline */
+        .position-btn:not(.active) {
+            color: var(--bs-secondary) !important;
+            border-color: var(--bs-secondary) !important;
+            background-color: white !important;
+            box-shadow: none !important;
+        }
+        .position-btn {
+            border-radius: 5px;
+            margin-right: 10px;
+            margin-bottom: 10px;
+            padding: 10px 15px;
+        }
+        .question-card {
+            margin-bottom: 15px;
+            border-radius: 6px;
+            border: 1px solid rgba(0,0,0,0.125);
+        }
+        .question-badge {
+            float: right;
+            padding: 3px 10px;
+            border-radius: 12px;
+            background-color: #e6f7ff;
+            color: #3a7edd;
+            font-size: 0.8rem;
+        }
+        .question-info {
+            color: #666;
+            font-size: 0.9rem;
+            margin-bottom: 5px;
+        }
+        .btn-action {
+            border-radius: 100px;
+            /* Adjust padding for a slightly smaller touch target */
+            padding: 0.35rem 0.85rem; 
+            margin-left: 5px;
+        }
+        .section-title {
+            margin: 25px 0 15px 0;
+            font-weight: 500;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        /* 新增：保留换行符样式 */
+        .preserve-newlines {
+            white-space: pre-wrap;
+            word-wrap: break-word; /* 兼容旧浏览器 */
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-4">
+        <!-- Navigation Bar Moved Above Title -->
+        <nav class="page-navigation-metro">
+            <ul>
+                <li class="station">
+                    <a href="assessment.html" class="station-link" title="开始测评">
+                        <span class="station-icon"><i class="bi bi-pencil-square"></i></span>
+                        <span class="station-label">开始测评</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="history.html" class="station-link" title="历史记录">
+                        <span class="station-icon"><i class="bi bi-clock-history"></i></span>
+                        <span class="station-label">历史记录</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="analysis.html" class="station-link" title="数据分析">
+                        <span class="station-icon"><i class="bi bi-bar-chart-line-fill"></i></span>
+                        <span class="station-label">数据分析</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station active-station"> <!-- Question Bank is active -->
+                    <a href="question-bank.html" class="station-link" title="题库管理">
+                        <span class="station-icon"><i class="bi bi-archive"></i></span>
+                        <span class="station-label">题库管理</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+        
+        <div class="d-flex justify-content-between align-items-center mb-3">
+            <div class="title-container">
+                <h2 class="page-main-title"><i class="bi bi-journal-bookmark-fill me-2"></i>题库维护</h2>
+                <div class="purple-accent-line"></div>
+            </div>
+            <button class="btn btn-outline-secondary" onclick="window.location.href='index.html'">
+                <i class="bi bi-house-door me-1"></i>返回首页
+            </button>
+        </div>
+
+        <div class="card fade-in">
+            <div class="card-body">
+                <!-- 岗位选择按钮组 -->
+                <div id="positionTabsContainer" class="mb-4">
+                    <!-- 岗位标签将由 JavaScript 动态生成 -->
+                </div>
+                 <!-- **** 移除这个多余的清空按钮 **** -->
+                 <!-- <button class="btn btn-outline-danger position-btn mb-3" onclick="clearQuestionsByPosition()">
+                     <i class="bi bi-trash me-1"></i>清空当前岗位题库
+                 </button> -->
+
+                <!-- 工具栏 (优化布局) -->
+                <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap"> 
+                    <!-- 左侧操作按钮 -->
+                    <div class="d-flex flex-wrap gap-2 mb-2 mb-md-0"> 
+                        <button class="btn btn-success" onclick="showAddQuestionModal()">
+                            <i class="bi bi-plus-circle"></i> 添加题目
+                        </button>
+                        <button class="btn btn-info text-white" onclick="importQuestions()">
+                            <i class="bi bi-file-earmark-arrow-up"></i> 批量导入
+                        </button>
+                        <button class="btn btn-warning text-dark" onclick="exportQuestions()"> <!-- Changed color to warning/dark text -->
+                            <i class="bi bi-file-earmark-arrow-down"></i> 导出题库
+                        </button>
+                        <button class="btn btn-outline-danger ms-md-3" onclick="clearQuestionsByPosition()"> <!-- Added margin for separation -->
+                             <i class="bi bi-trash"></i> 清空当前岗位题库
+                         </button>
+                    </div>
+                    <!-- 右侧搜索框 -->
+                    <!-- Remove w-100 to allow merging on small screens -->
+                    <div class="w-md-auto"> 
+                        <div class="input-group">
+                            <input type="text" class="form-control" id="searchInput" placeholder="搜索题目...">
+                            <button class="btn btn-outline-secondary" type="button" onclick="searchQuestions()">
+                                <i class="bi bi-search"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 必答题区域 -->
+                <div id="requiredQuestions">
+                    <h6 class="section-title">必答题 (<span id="requiredCount">0</span>题)</h6>
+                    <div id="requiredQuestionsList"></div>
+                </div>
+
+                <!-- 随机题区域 -->
+                <div id="randomQuestions">
+                    <h6 class="section-title">随机题 (<span id="randomCount">0</span>题)</h6>
+                    <div id="randomQuestionsList"></div>
+                </div>
+                
+                <!-- 分页控件 -->
+                <nav aria-label="Question bank pagination" class="mt-4">
+                    <ul class="pagination justify-content-center" id="paginationContainer"></ul>
+                </nav>
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加/编辑题目模态框 -->
+    <div class="modal fade" id="questionModal" tabindex="-1">
+        <div class="modal-dialog modal-lg">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="modalTitle">添加题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="questionForm">
+                        <input type="hidden" id="questionId">
+                        <div class="mb-3">
+                            <label for="questionContent" class="form-label">题目内容</label>
+                            <textarea class="form-control" id="questionContent" rows="3" required></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label for="standardAnswer" class="form-label">标准答案</label>
+                            <textarea class="form-control" id="standardAnswer" rows="3"></textarea>
+                        </div>
+                        <div class="row">
+                            <div class="col-md-6 mb-3">
+                                <label for="questionType" class="form-label">题目类型</label>
+                                <select class="form-select" id="questionType" required>
+                                    <option value="required">必答题</option>
+                                    <option value="random">随机题</option>
+                                </select>
+                            </div>
+                            <div class="col-md-6 mb-3">
+                                <label for="standardScore" class="form-label">标准分值</label>
+                                <input type="number" class="form-control" id="standardScore" min="0" max="100" required>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label for="section" class="form-label">所属板块</label>
+                            <input type="text" class="form-control" id="section" placeholder="例如：安全规定、操作流程">
+                        </div>
+                        <div class="mb-3">
+                            <label for="knowledgeSource" class="form-label">知识点来源 <span class="text-muted small">(选填)</span></label>
+                            <textarea class="form-control" id="knowledgeSource" rows="2" placeholder="例如：参见《XX手册》第 Y 章 Z 节"></textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">适用岗位</label>
+                            <div class="form-check">
+                                <input class="form-check-input position-checkbox" type="checkbox" id="positionDutyStation" value="duty_station">
+                                <label class="form-check-label" for="positionDutyStation">值班站长</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input position-checkbox" type="checkbox" id="positionStationDuty" value="station_duty">
+                                <label class="form-check-label" for="positionStationDuty">车站值班员</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input position-checkbox" type="checkbox" id="positionStationSafety" value="station_safety">
+                                <label class="form-check-label" for="positionStationSafety">站务安全员</label>
+                            </div>
+                            <div class="input-group input-group-sm mt-3">
+                                <input type="text" class="form-control" id="manualPositionInput" placeholder="手动输入新岗位名称...">
+                                <button class="btn btn-outline-success" type="button" onclick="addManualPosition()"><i class="bi bi-plus-lg"></i> 添加</button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">取消</button>
+                    <button type="button" class="btn btn-primary" onclick="saveQuestion()">保存</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 导入模态框 (美化版) -->
+    <div class="modal fade" id="importModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered modal-lg">
+            <div class="modal-content shadow-lg border-0">
+                <div class="modal-header bg-light border-bottom-0">
+                    <h5 class="modal-title text-primary"><i class="bi bi-file-earmark-arrow-up me-2"></i>批量导入题目</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <input class="d-none" type="file" id="importFile" accept=".xlsx,.xls,.csv" onchange="displaySelectedFileName(this)">
+                    
+                    <label for="importFile" class="form-label">选择或拖拽 Excel 文件</label>
+                    <div id="dropZone" class="border rounded p-4 text-center mb-3" style="cursor: pointer; background-color: #f8f9fa; border-style: dashed !important;">
+                        <i class="bi bi-cloud-arrow-up-fill text-secondary fs-1 mb-2"></i>
+                        <p class="mb-1">将文件拖拽到此处，或</p>
+                        <button type="button" class="btn btn-sm btn-outline-primary" onclick="document.getElementById('importFile').click();">点击选择文件</button>
+                        <p id="selectedFileName" class="mt-2 text-muted small"></p>
+                    </div>
+
+                    <div class="alert alert-info d-flex align-items-center">
+                        <i class="bi bi-info-circle flex-shrink-0 me-2"></i>
+                        <div>
+                            请确保文件格式正确。
+                            <a href="#" onclick="downloadTemplate(event)" class="alert-link">点击此处下载模板</a> 查看格式要求。
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-top-0 bg-light">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal"><i class="bi bi-x-lg me-1"></i>取消</button>
+                    <button type="button" class="btn btn-primary" id="importProcessBtn" onclick="processImport()" disabled><i class="bi bi-check-lg me-1"></i>导入</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/question-bank.js"></script>
+    <script>
+        // 为岗位按钮添加点击事件
+        document.querySelectorAll('.position-btn').forEach(btn => {
+            if (!btn.hasAttribute('onclick')) { // 跳过清空按钮
+                btn.addEventListener('click', function() {
+                    // 切换激活状态
+                    document.querySelectorAll('.position-btn').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                    // 加载选中岗位的题目
+                    filterByPosition(this.dataset.position);
+                });
+            }
+        });
+    </script>
+</body>
+</html> 
