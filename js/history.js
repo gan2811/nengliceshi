@@ -509,8 +509,17 @@ async function viewDetail(assessmentId) {
     }
 }
 
-// **** 新增：构建详情模态框内容的 HTML ****
+// **** 新增：构建详情模态框内容的 HTML (增加本地题库补充答案) ****
 function buildDetailHtml(assessment, details) {
+    // **** 新增：加载本地题库 ****
+    let questionBank = [];
+    try {
+        questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
+    } catch (e) {
+        console.error("Error loading question bank from localStorage:", e);
+    }
+    // **** 结束加载 ****
+
     const userInfo = assessment.get('userPointer');
     const name = userInfo ? userInfo.get('name') : 'N/A';
     const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
@@ -598,6 +607,15 @@ function buildDetailHtml(assessment, details) {
              const stdScore = detail.get('standardScore') !== undefined ? detail.get('standardScore') : 'N/A';
              const duration = detail.get('durationSeconds') !== undefined ? detail.get('durationSeconds') : 'N/A';
             const comment = detail.get('comment') || '无';
+
+            // **** 修改：从本地题库获取标准答案 ****
+            const questionId = detail.get('questionId');
+            let standardAnswer = '未找到题库记录'; // 默认值
+            const bankQuestion = questionBank.find(q => q.id == questionId); // 使用非严格比较
+            if (bankQuestion && bankQuestion.standardAnswer) {
+                standardAnswer = bankQuestion.standardAnswer;
+            }
+            // **** 结束获取 ****
 
             tableHtml += `
                 <tr>
@@ -822,6 +840,14 @@ async function exportFullHistoryToExcel() {
              details.forEach((d, qIndex) => {
                  const scoreRaw = d.get('score');
                  const score = (scoreRaw !== null && scoreRaw !== undefined && !isNaN(scoreRaw)) ? Number(scoreRaw) : '未评分';
+                 // **** 修改：从本地题库获取标准答案 ****
+                 const questionId = d.get('questionId');
+                 let standardAnswer = '未找到题库记录'; // 默认值
+                 const bankQuestion = questionBank.find(q => q.id == questionId); // 使用非严格比较
+                 if (bankQuestion && bankQuestion.standardAnswer) {
+                     standardAnswer = bankQuestion.standardAnswer;
+                 }
+                 // **** 结束获取 ****
                  detailData.push([
                      qIndex + 1,
                      d.get('questionContent') || '',
@@ -829,11 +855,11 @@ async function exportFullHistoryToExcel() {
                      score,
                      d.get('durationSeconds') ?? 'N/A',
                      d.get('comment') || '',
-                     d.get('standardAnswer') || '',
+                     standardAnswer, // <-- 使用从题库获取的答案
                      d.get('knowledgeSource') || '',
                      d.get('section') || '',
-                     d.get('questionType') || '',
-                     d.get('questionOriginId') || d.id
+                     d.get('type') || '', // 确保字段名统一为 type
+                     questionId // <-- 使用前面获取的 questionId
                  ]);
              });
              detailSheetsData[sheetName] = detailData;
@@ -940,6 +966,16 @@ async function resumeAssessment(assessmentId) {
          detailQuery.limit(1000);
          const details = await detailQuery.find();
 
+         // **** 新增：加载本地题库 ****
+         let questionBank = [];
+         try {
+             questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
+         } catch (e) {
+             console.error("[resumeAssessment] Error loading question bank from localStorage:", e);
+             // 如果题库加载失败，后续标准答案会是 undefined
+         }
+         // **** 结束加载 ****
+
          // 3. Build the structure needed by assessment.js
          const userInfo = assessmentRecord.get('userPointer');
          const frontendId = assessmentRecord.get('frontendId'); // **** 获取前端 ID ****
@@ -954,22 +990,32 @@ async function resumeAssessment(assessmentId) {
                  objectId: userInfo.id // **** 添加 user objectId ****
               } : {},
               position: assessmentRecord.get('positionCode'),
-              questions: details.map(d => ({
-                 id: d.get('questionId'), // **** 统一使用 questionId ****
-                  content: d.get('questionContent'),
-                  standardScore: d.get('standardScore'),
-                  standardAnswer: d.get('standardAnswer'),
-                  section: d.get('section'),
-                  type: d.get('type'), // **** 统一使用 type ****
-                  knowledgeSource: d.get('knowledgeSource')
-              })).sort((a,b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999)), // Add sorting if orderIndex exists
+              questions: details.map(d => {
+                  // **** 修改：从本地题库获取 standardAnswer ****
+                  const questionId = d.get('questionId');
+                  let standardAnswerFromBank = undefined;
+                  const bankQuestion = questionBank.find(q => q.id == questionId);
+                  if (bankQuestion) {
+                      standardAnswerFromBank = bankQuestion.standardAnswer;
+                  }
+                  // **** 结束获取 ****
+                  return {
+                     id: questionId, // 统一使用 questionId
+                      content: d.get('questionContent'),
+                      standardScore: d.get('standardScore'),
+                      standardAnswer: standardAnswerFromBank, // <-- 使用从题库获取的答案
+                      section: d.get('section'),
+                      type: d.get('type'), // 统一使用 type
+                      knowledgeSource: d.get('knowledgeSource')
+                  };
+              }).sort((a,b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999)), // Add sorting if orderIndex exists
               answers: details.reduce((acc, d) => {
-                  const qId = d.get('questionId'); // **** 统一使用 questionId ****
+                  const qId = d.get('questionId');
                   acc[qId] = {
-                      score: d.get('score'), // Load existing score
-                      comment: d.get('comment') || '', // Load existing comment
-                      startTime: null, // Reset startTime on resume
-                      duration: Number(d.get('durationSeconds')) || 0, // Load accumulated duration
+                      score: d.get('score'),
+                      comment: d.get('comment') || '',
+                      startTime: null,
+                      duration: Number(d.get('durationSeconds')) || 0,
                   };
                   return acc;
               }, {}),
@@ -1008,65 +1054,79 @@ function checkLocalRecords() {
     );
     console.log(`[checkLocalRecords] 找到 ${localUnsyncedRecords.length} 条未同步记录。`);
 
-    // 获取用于显示结果的容器 (可以是一个独立的 div，或者在表格上方插入)
+    // 获取用于显示结果的容器
     let localRecordsContainer = document.getElementById('localRecordsDisplayArea');
+
+    // **** 修改：仅当有本地记录时才显示该区域 ****
+    if (localUnsyncedRecords.length === 0) {
+        // 如果容器存在，则清空并隐藏或移除
+        if (localRecordsContainer) {
+            localRecordsContainer.innerHTML = '';
+            localRecordsContainer.classList.add('d-none'); // 添加 d-none 类来隐藏
+            // 或者直接移除: localRecordsContainer.remove();
+        }
+        // 如果容器不存在，则什么也不做
+        return; // 没有记录，直接返回
+    }
+
+    // ---- 如果有记录，则确保容器存在并显示 ----
     if (!localRecordsContainer) {
         localRecordsContainer = document.createElement('div');
         localRecordsContainer.id = 'localRecordsDisplayArea';
-        localRecordsContainer.className = 'mt-4 mb-3 p-3 border rounded bg-light shadow-sm';
-        // 插入到筛选区域下方，表格上方
+        localRecordsContainer.className = 'mt-4 mb-3 p-3 border rounded bg-light shadow-sm'; // 移除 d-none (如果之前有)
+        // 插入到筛选区域下方，表格上方 (保持不变)
         const filterSection = document.querySelector('.filter-section');
         const tableContainer = document.querySelector('.table-responsive');
         if (filterSection && tableContainer) {
-             filterSection.insertBefore(localRecordsContainer, tableContainer);
-     } else {
-            // Fallback: 插入到 container 顶部
+             filterSection.parentElement.insertBefore(localRecordsContainer, tableContainer.parentElement);
+         } else {
+            // Fallback: 插入到 container 顶部 (保持不变)
             document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
         }
+    } else {
+        // 如果容器已存在，确保它是可见的
+        localRecordsContainer.classList.remove('d-none');
     }
 
-    // 清空之前的内容
+    // 清空之前的内容 (移到这里，确保只在有记录时清空)
     localRecordsContainer.innerHTML = '';
 
-    if (localUnsyncedRecords.length === 0) {
-        localRecordsContainer.innerHTML = '<p class="text-center text-muted mb-0"><i class="bi bi-check-circle me-1"></i> 没有找到本地暂存或提交失败的测评记录。</p>';
-        } else {
-        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">'
-        localUnsyncedRecords.forEach((record, index) => {
-            const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
-            const name = record.userInfo?.name || '未知';
-            const position = getPositionName(record.position || record.userInfo?.position);
-            let statusBadge = '';
-            let actionsHtml = '';
+    // ---- 构建并显示列表 HTML (逻辑基本不变) ----
+    let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">';
+    localUnsyncedRecords.forEach((record, index) => {
+        const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
+        const name = record.userInfo?.name || '未知';
+        const position = getPositionName(record.position || record.userInfo?.position);
+        let statusBadge = '';
+        let actionsHtml = '';
 
-            if (record.status === 'paused') {
-                statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
-                actionsHtml = `
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
-                `;
-            } else if (record.status === 'failed_to_submit') {
-                statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
-                actionsHtml = `
-                    <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
-                    <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
-                `;
-            }
-
-            listHtml += `
-                <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
-                    <div>
-                        <strong>${name}</strong> (${position}) ${statusBadge}<br>
-                        <small class="text-muted">时间: ${timestamp}</small>
-                    </div>
-                    <div>
-                        ${actionsHtml}
-                    </div>
-                </li>
+        if (record.status === 'paused') {
+            statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
+            actionsHtml = `
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
             `;
-        });
-        listHtml += '</ul>';
-        localRecordsContainer.innerHTML = listHtml;
-    }
+        } else if (record.status === 'failed_to_submit') {
+            statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
+            actionsHtml = `
+                <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
+            `;
+        }
+
+        listHtml += `
+            <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
+                <div>
+                    <strong>${name}</strong> (${position}) ${statusBadge}<br>
+                    <small class="text-muted">时间: ${timestamp}</small>
+                </div>
+                <div>
+                    ${actionsHtml}
+                </div>
+            </li>
+        `;
+    });
+    listHtml += '</ul>';
+    localRecordsContainer.innerHTML = listHtml;
 }
 
 // **** 新增：删除本地记录 ****
@@ -1093,7 +1153,7 @@ function deleteLocalRecord(recordIdToDelete) {
      } else {
          console.warn("[deleteLocalRecord] Could not find local record to delete with ID:", recordIdToDelete);
          alert("删除失败，未找到对应的本地记录。");
-     }
+    }
 }
 
 // **** 新增：重试提交失败的记录 ****

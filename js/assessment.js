@@ -1012,7 +1012,7 @@ async function pauseAssessment() { // <-- Make the function async
         }
         return;
     }
-
+    
     // **** 保存最后一次答案和时间 ****
     saveCurrentAnswer(true); // Save current state before pausing (isNavigating=true to skip validation if needed)
     recordPreviousQuestionTime(); // Record time for the question before the current one
@@ -1035,12 +1035,12 @@ async function pauseAssessment() { // <-- Make the function async
         const startTime = new Date(currentAssessmentData.startTime);
         const now = new Date();
         elapsedSeconds = Math.floor((now - startTime) / 1000);
-    }
+    } 
 
     // 3. 更新测评数据状态 (本地副本)
     currentAssessmentData.status = 'paused';
     currentAssessmentData.elapsedSeconds = elapsedSeconds; // 保存总流逝时间
-    currentAssessmentData.currentQuestionIndex = currentQuestionIndex;
+    currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
     currentAssessmentData.timestamp = new Date().toISOString(); // 更新时间戳为暂存时间
     // totalActiveSeconds 已经在上面更新过了
 
@@ -1071,9 +1071,9 @@ async function pauseAssessment() { // <-- Make the function async
     console.log("[pauseAssessment] Saving state to local storage history...");
     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
     // 使用更新过的 currentAssessmentData 创建历史记录
-    const historyRecord = {
+     const historyRecord = {
         id: currentAssessmentData.id, // Keep original frontend ID for local consistency
-        userInfo: currentAssessmentData.userInfo,
+        userInfo: currentAssessmentData.userInfo, 
         position: currentAssessmentData.position,
         assessor: currentAssessmentData.assessor || null,
         timestamp: currentAssessmentData.timestamp, // Use pause time
@@ -1099,7 +1099,7 @@ async function pauseAssessment() { // <-- Make the function async
         console.log(`[pauseAssessment] Added new paused record to local history (ID: ${historyRecord.id}).`);
     }
     try {
-        localStorage.setItem('assessmentHistory', JSON.stringify(history));
+    localStorage.setItem('assessmentHistory', JSON.stringify(history));
         console.log("[pauseAssessment] Local history saved successfully.");
     } catch (e) {
         console.error("[pauseAssessment] Error saving to local storage history:", e);
