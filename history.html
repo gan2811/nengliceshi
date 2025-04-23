@@ -174,14 +174,15 @@
 
             <!-- 操作按钮区域 -->
             <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3">
-                <!-- 从云端下载按钮 -->
-                <button id="downloadFromCloudBtn" class="btn btn-info btn-sm text-white"><i class="bi bi-cloud-download me-1"></i> 从云端下载记录</button> 
-                <!-- 导出列表按钮（移到前面） -->
+                <!-- 刷新云端记录按钮 -->
+                <button id="refreshCloudBtn" class="btn btn-primary btn-sm"><i class="bi bi-arrow-clockwise me-1"></i> 刷新云端记录</button>
+                <!-- 导出列表按钮 -->
                 <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()">
-                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
-                 </button>
-                <!-- 导出历史记录按钮 -->
-                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出历史记录(Excel)</button>
+                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出当前列表</button>
+                <!-- 导出全部历史记录按钮 -->
+                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出全部记录(Excel)</button>
+                <!-- (可选) 添加一个用于处理本地未同步记录的按钮 -->
+                <button id="checkLocalBtn" class="btn btn-warning btn-sm text-dark"><i class="bi bi-hdd-stack me-1"></i> 检查本地暂存</button>
             </div>
         </div>
     </div>
