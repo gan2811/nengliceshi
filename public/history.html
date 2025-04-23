@@ -173,13 +173,15 @@
             </nav>
 
             <!-- 操作按钮区域 -->
-            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3"> <!-- 修改：使用 Grid 和 Flex 响应式布局 -->
-                <button id="clearHistoryBtn" class="btn btn-danger btn-sm"><i class="bi bi-trash me-1"></i> 清空历史记录</button>
-                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出历史记录</button>
-                <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()"> <!-- 调整样式和间距 -->
+            <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3">
+                <!-- 从云端下载按钮 -->
+                <button id="downloadFromCloudBtn" class="btn btn-info btn-sm text-white"><i class="bi bi-cloud-download me-1"></i> 从云端下载记录</button> 
+                <!-- 导出列表按钮（移到前面） -->
+                <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()">
                      <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出列表
                  </button>
-                <button id="uploadHistoryBtn" class="btn btn-primary btn-sm"><i class="bi bi-cloud-upload me-1"></i> 上传历史记录到云端</button>
+                <!-- 导出历史记录按钮 -->
+                <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出历史记录(Excel)</button>
             </div>
         </div>
     </div>
