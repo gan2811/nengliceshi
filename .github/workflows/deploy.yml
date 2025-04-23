@@ -6,7 +6,7 @@ on:
       - main # Trigger deployment on push to main branch
 
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 
