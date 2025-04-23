@@ -923,18 +923,20 @@ async function submitAssessment() {
         console.log("[submitAssessment] 结果已同步保存到本地历史记录。");
 
         localStorage.removeItem('currentAssessment');
-        console.log("[submitAssessment] 本地 currentAssessment 已清除。");
+        console.log("[submitAssessment] 本地 currentAssessment 已清除。准备跳转...");
 
-        // **** [调试] 暂时注释掉跳转，观察日志 ****
-        // window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
-        console.log(`[submitAssessment] [调试] 操作完成，页面跳转已被禁用。收到的 ObjectId: ${savedAssessmentObjectId}`);
-        alert(`[调试] 测评提交成功！页面跳转已临时禁用，请查看控制台日志中的 ObjectId: ${savedAssessmentObjectId}`);
+        // 恢复正常的跳转逻辑
+        window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
+        
+        // 移除调试代码
+        // console.log(`[submitAssessment] [调试] 操作完成，页面跳转已被禁用。收到的 ObjectId: ${savedAssessmentObjectId}`);
+        // alert(`[调试] 测评提交成功！页面跳转已临时禁用，请查看控制台日志中的 ObjectId: ${savedAssessmentObjectId}`);
 
-        // 跳转注释掉后，需要手动恢复按钮状态，否则会一直显示"提交中"
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '提交测评 (调试模式)';
-        }
+        // 移除调试时添加的按钮状态恢复，因为页面会跳转
+        // if (submitBtn) { 
+        //     submitBtn.disabled = false;
+        //     submitBtn.innerHTML = '提交测评 (调试模式)';
+        // }
 
     } catch (error) {
         // **[错误处理]**
