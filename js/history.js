@@ -5,6 +5,7 @@ let currentSortColumn = 'timestamp'; // 默认排序字段
 let currentSortOrder = 'desc'; // 默认排序顺序 (desc: 降序, asc: 升序)
 let totalRecords = 0; // 总记录数
 let currentFilters = {}; // 存储当前筛选条件
+let localUnsyncedRecords = []; // 存储找到的本地未同步记录
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
@@ -40,6 +41,12 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // **自动加载第一页数据**
     loadHistoryFromCloud(currentPage);
+
+    // **** 新增：绑定检查本地按钮事件 ****
+    const checkLocalBtn = document.getElementById('checkLocalBtn');
+    if (checkLocalBtn) {
+        checkLocalBtn.onclick = checkLocalRecords;
+    }
 
     // 其他按钮的绑定 (导出等，保持不变或根据需要修改)
     const exportHistoryBtn = document.getElementById('exportHistoryBtn');
@@ -550,6 +557,191 @@ function exportDetail() {
      alert("导出详情功能待完善。");
 }
 
+// **** 新增：检查本地暂存/失败的记录 ****
+function checkLocalRecords() {
+    console.log("[checkLocalRecords] 开始检查本地记录...");
+    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    localUnsyncedRecords = history.filter(record => 
+        record.status === 'paused' || record.status === 'failed_to_submit'
+    );
+    console.log(`[checkLocalRecords] 找到 ${localUnsyncedRecords.length} 条未同步记录。`);
+
+    // 获取用于显示结果的容器 (可以是一个独立的 div，或者在表格上方插入)
+    let localRecordsContainer = document.getElementById('localRecordsDisplayArea');
+    if (!localRecordsContainer) {
+        localRecordsContainer = document.createElement('div');
+        localRecordsContainer.id = 'localRecordsDisplayArea';
+        localRecordsContainer.className = 'mt-4 mb-3 p-3 border rounded bg-light shadow-sm';
+        // 插入到筛选区域下方，表格上方
+        const filterSection = document.querySelector('.filter-section');
+        const tableContainer = document.querySelector('.table-responsive');
+        if (filterSection && tableContainer) {
+             filterSection.insertBefore(localRecordsContainer, tableContainer);
+        } else {
+            // Fallback: 插入到 container 顶部
+            document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
+        }
+    }
+
+    // 清空之前的内容
+    localRecordsContainer.innerHTML = '';
+
+    if (localUnsyncedRecords.length === 0) {
+        localRecordsContainer.innerHTML = '<p class="text-center text-muted mb-0"><i class="bi bi-check-circle me-1"></i> 没有找到本地暂存或提交失败的测评记录。</p>';
+    } else {
+        let listHtml = '<h6 class="mb-3"><i class="bi bi-hdd-stack me-2"></i>本地暂存/失败记录</h6><ul class="list-group">'
+        localUnsyncedRecords.forEach((record, index) => {
+            const timestamp = formatDate(record.timestamp || record.startTime, true); // 使用友好的时间格式
+            const name = record.userInfo?.name || '未知';
+            const position = getPositionName(record.position || record.userInfo?.position);
+            let statusBadge = '';
+            let actionsHtml = '';
+
+            if (record.status === 'paused') {
+                statusBadge = '<span class="badge bg-warning text-dark ms-2">暂存中</span>';
+                actionsHtml = `
+                    <button class="btn btn-sm btn-outline-primary me-1" onclick="resumeLocalAssessment('${record.id}')"><i class="bi bi-play-circle"></i> 继续</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
+                `;
+            } else if (record.status === 'failed_to_submit') {
+                statusBadge = '<span class="badge bg-danger ms-2">提交失败</span>';
+                actionsHtml = `
+                    <button class="btn btn-sm btn-outline-success me-1" onclick="retrySubmit('${record.id}', this)"><i class="bi bi-cloud-upload"></i> 重试提交</button>
+                    <button class="btn btn-sm btn-outline-danger" onclick="deleteLocalRecord('${record.id}')"><i class="bi bi-trash"></i> 删除本地</button>
+                `;
+            }
+
+            listHtml += `
+                <li class="list-group-item d-flex justify-content-between align-items-center" data-record-id="${record.id}">
+                    <div>
+                        <strong>${name}</strong> (${position}) ${statusBadge}<br>
+                        <small class="text-muted">时间: ${timestamp}</small>
+                    </div>
+                    <div>
+                        ${actionsHtml}
+                    </div>
+                </li>
+            `;
+        });
+        listHtml += '</ul>';
+        localRecordsContainer.innerHTML = listHtml;
+    }
+}
+
+// **** 新增：删除本地记录 ****
+function deleteLocalRecord(recordIdToDelete) {
+     if (!confirm('确定要删除这条本地记录吗？此操作不可恢复。')) return;
+
+     console.log(`[deleteLocalRecord] Deleting local record with ID: ${recordIdToDelete}`);
+     let history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+     const initialLength = history.length;
+     history = history.filter(record => record.id != recordIdToDelete); // 使用非严格比较以防类型问题
+
+     if (history.length < initialLength) {
+         localStorage.setItem('assessmentHistory', JSON.stringify(history));
+         console.log("[deleteLocalRecord] Local record deleted.");
+         // 从显示的列表中移除
+         const listItem = document.querySelector(`#localRecordsDisplayArea li[data-record-id="${recordIdToDelete}"]`);
+         if (listItem) {
+             listItem.remove();
+         }
+         // 检查是否列表已空
+         if (document.querySelectorAll('#localRecordsDisplayArea li').length === 0) {
+             checkLocalRecords(); // 重新调用以显示"无记录"消息
+         }
+     } else {
+         console.warn("[deleteLocalRecord] Could not find local record to delete with ID:", recordIdToDelete);
+         alert("删除失败，未找到对应的本地记录。");
+     }
+}
+
+// **** 新增：继续本地暂存的测评 ****
+function resumeLocalAssessment(recordIdToResume) {
+    console.log(`[resumeLocalAssessment] Resuming assessment with local ID: ${recordIdToResume}`);
+    let history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    const assessmentToResume = history.find(record => record.id == recordIdToResume && record.status === 'paused');
+
+    if (assessmentToResume) {
+        // 检查是否有正在进行的测评
+        if (localStorage.getItem('currentAssessment')) {
+            const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
+            // 如果当前的就是要恢复的，或者当前的是已提交/失败的，可以直接覆盖
+            if (currentData.id == recordIdToResume || currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
+                 // 可以直接覆盖
+            } else if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
+                 return; // 用户取消
+            }
+        }
+
+        // 将选中的测评记录存入 currentAssessment
+        localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
+
+        // 从历史记录中移除暂存状态（推荐）
+        history = history.filter(record => record.id != recordIdToResume);
+        localStorage.setItem('assessmentHistory', JSON.stringify(history));
+
+        console.log("Assessment data loaded into currentAssessment. Redirecting...");
+        window.location.href = 'assessment.html'; // 跳转到测评页面
+    } else {
+        console.error(`无法找到 ID 为 ${recordIdToResume} 的可继续的本地测评记录。`);
+        alert("无法继续测评，记录可能已被删除或状态已改变。");
+        checkLocalRecords(); // 刷新本地列表显示
+    }
+}
+
+// **** 新增：重试提交失败的记录 ****
+async function retrySubmit(recordIdToRetry, buttonElement) {
+    console.log(`[retrySubmit] Retrying submission for local ID: ${recordIdToRetry}`);
+    let history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+    const recordToRetry = history.find(record => record.id == recordIdToRetry && record.status === 'failed_to_submit');
+
+    if (!recordToRetry) {
+        alert("无法重试提交，未找到对应的本地失败记录。");
+        checkLocalRecords(); // 刷新列表
+        return;
+    }
+
+    // 禁用按钮
+    if (buttonElement) {
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 提交中...';
+    }
+
+    // 准备数据 (与 assessment.js 类似，但使用 recordToRetry)
+    // 需要确保 recordToRetry 包含所有需要提交的数据
+    const assessmentData = { ...recordToRetry }; // 创建副本以防修改原始记录
+    // 可以在这里重新设置 assessorName 或其他需要确认的信息
+    assessmentData.status = 'completed'; // 假设重试成功后是完成状态
+    assessmentData.timestamp = new Date().toISOString(); // 更新时间戳为当前时间
+    // 移除本地特定的错误信息字段 (如果存在)
+    delete assessmentData.errorInfo;
+
+    console.log("[retrySubmit] 准备调用云函数 submitAssessmentCloud...");
+    console.log("[retrySubmit] 传递的数据包预览:", JSON.parse(JSON.stringify(assessmentData)));
+
+    try {
+        const savedAssessmentObjectId = await AV.Cloud.run('submitAssessmentCloud', { assessmentData: assessmentData });
+        console.log("[retrySubmit] 云函数调用成功，返回 Assessment ObjectId:", savedAssessmentObjectId);
+
+        // 提交成功，从本地历史记录中移除
+        history = history.filter(record => record.id != recordIdToRetry);
+        localStorage.setItem('assessmentHistory', JSON.stringify(history));
+        console.log("[retrySubmit] 已从本地历史记录中移除成功提交的记录。");
+
+        alert(`记录 (本地ID: ${recordIdToRetry}) 成功提交到云端！`);
+        checkLocalRecords(); // 刷新本地列表
+        loadHistoryFromCloud(1); // 刷新云端列表
+
+    } catch (error) {
+        console.error(`[retrySubmit] 重试提交记录 ID ${recordIdToRetry} 时出错:`, error);
+        alert(`重新提交失败: ${error.message || '未知错误'}`);
+        // 恢复按钮状态
+        if (buttonElement) {
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = '<i class="bi bi-cloud-upload"></i> 重试提交';
+        }
+    }
+}
 
 // **** Helper Functions (保持或从 result.js 复制) ****
 function getStationName(stationCode) {
