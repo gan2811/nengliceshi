@@ -357,7 +357,8 @@
             const positionStartDate = document.getElementById('positionStartDate');
             const positionEndDate = document.getElementById('positionEndDate');
 
-            // 1. Populate Position Dropdowns
+            // 1. Populate Position Dropdowns -- COMMENTED OUT - Handled by analysis.js -> loadPositionList()
+            /*
             try {
                 const positionsData = localStorage.getItem('jobPositions');
                 const positions = JSON.parse(positionsData || '{}');
@@ -378,14 +379,12 @@
                         positionCount++;
                     }
                 }
-                if (positionCount === 0) {
-                     console.warn("'jobPositions' in localStorage is empty or invalid. Position dropdowns will be empty.");
-                     // Optionally display a message to the user
-                }
+                // console.warn("'jobPositions' in localStorage is empty or invalid. Position dropdowns will be empty.");
+                // Display message or disable dropdowns
             } catch (error) {
-                console.error("Error loading or parsing 'jobPositions' from localStorage:", error);
-                // Handle error, maybe disable dropdowns or show message
+                console.error("[Initial Position Check] Error reading jobPositions:", error);
             }
+            */
 
             // 2. Set Default Date for Position Analysis
             try {
