@@ -396,12 +396,15 @@
                 const firstDayOfMonth = `${year}-${month}-01`; // yyyy-MM-01 格式
                 const currentDate = `${year}-${month}-${day}`; // yyyy-MM-dd 格式
 
+                // **** COMMENTED OUT to disable default date filtering ****
+                /*
                 if (positionStartDate) {
                     positionStartDate.value = firstDayOfMonth; // 设置为本月第一天
                 }
                 if (positionEndDate) {
                     positionEndDate.value = currentDate; // 设置为当前日期
                 }
+                */
             } catch (error) {
                  console.error("Error setting default date:", error);
             }
