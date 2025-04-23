@@ -39,10 +39,7 @@ document.addEventListener('DOMContentLoaded', function() {
          refreshBtn.classList.add('btn-primary'); // 可选：换成主要按钮样式
     }
     
-    // **自动加载第一页数据**
-    loadHistoryFromCloud(currentPage);
-
-    // **** 新增：绑定检查本地按钮事件 ****
+    // **** 新增：绑定检查本地按钮事件 **** (保持绑定，但下面会自动调用一次)
     const checkLocalBtn = document.getElementById('checkLocalBtn');
     if (checkLocalBtn) {
         checkLocalBtn.onclick = checkLocalRecords;
@@ -54,6 +51,12 @@ document.addEventListener('DOMContentLoaded', function() {
        // exportHistoryBtn.onclick = exportFullHistoryToExcel; // 需要实现 exportFullHistoryToExcel
     }
     // exportListBtn 的 onclick 在 HTML 中定义了
+
+    // **自动加载第一页云端数据**
+    loadHistoryFromCloud(currentPage); // Start loading cloud data
+
+    // **** 修改：在页面加载时自动检查并显示本地记录 ****
+    checkLocalRecords(); // Automatically check local records on load
 
 });
 
@@ -479,8 +482,8 @@ async function viewDetail(assessmentId) {
     if (!detailModalElement) {
         console.error("Detail modal element not found!");
         detailModalBody.innerHTML = '<p class="text-danger text-center">错误：详情模态框未找到。</p>';
-        return;
-    }
+            return;
+        }
     const detailModal = new bootstrap.Modal(detailModalElement);
     detailModal.show();
 
@@ -598,14 +601,14 @@ function buildDetailHtml(assessment, details) {
 
             tableHtml += `
                 <tr>
-                    <td>${index + 1}</td>
+                <td>${index + 1}</td>
                     <td>${qContent}</td>
                     <td>${stdScore}</td>
                     <td>${score}</td>
-                    <td>${duration}</td>
+                <td>${duration}</td> 
                     <td>${comment}</td>
-                </tr>
-            `;
+            </tr>
+        `;
         });
     } else {
         tableHtml += '<tr><td colspan="6" class="text-center text-muted">无题目详情数据</td></tr>';
@@ -997,7 +1000,7 @@ async function resumeAssessment(assessmentId) {
 // **** 新增：检查本地暂存/失败的记录 ****
 function checkLocalRecords() {
     console.log("[checkLocalRecords] 开始检查本地记录...");
-    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
+     const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
     localUnsyncedRecords = history.filter(record => 
         record.status === 'paused' || record.status === 'failed_to_submit'
     );
@@ -1014,7 +1017,7 @@ function checkLocalRecords() {
         const tableContainer = document.querySelector('.table-responsive');
         if (filterSection && tableContainer) {
              filterSection.insertBefore(localRecordsContainer, tableContainer);
-        } else {
+     } else {
             // Fallback: 插入到 container 顶部
             document.querySelector('.container').insertBefore(localRecordsContainer, document.querySelector('.container').firstChild);
         }

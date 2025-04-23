@@ -425,27 +425,33 @@ function calculateScoreDistribution(records) {
         '60-69': 0,
         '70-79': 0,
         '80-89': 0,
-        '90-100': 0
+        '90-100': 0,
+        '未完成/无分数': 0 // **** ADDED: New category ****
     };
-    let totalRecords = 0;
+    let totalRecordsCounted = 0; // Count all records processed
 
     records.forEach(record => {
-        if (record.score && record.score.scoreRate !== undefined) {
-            totalRecords++;
+        totalRecordsCounted++; // Increment for every record passed in
+        // **** MODIFIED: Check for completed status and valid score ****
+        if (record.status === 'completed' && record.score && record.score.scoreRate !== undefined) {
             const rate = record.score.scoreRate;
             if (rate < 60) distribution['<60']++;
             else if (rate < 70) distribution['60-69']++;
             else if (rate < 80) distribution['70-79']++;
             else if (rate < 90) distribution['80-89']++;
             else distribution['90-100']++;
+        } else {
+            // **** MODIFIED: Increment the new category for non-completed/scored records ****
+            distribution['未完成/无分数']++;
         }
     });
 
      // 计算百分比
      const distributionPercent = {};
-     if (totalRecords > 0) {
+     // **** MODIFIED: Use totalRecordsCounted for percentage calculation ****
+     if (totalRecordsCounted > 0) {
          for (const range in distribution) {
-             distributionPercent[range] = Math.round((distribution[range] / totalRecords) * 100);
+             distributionPercent[range] = Math.round((distribution[range] / totalRecordsCounted) * 100);
          }
      } else {
          // 如果没有记录，所有占比为0
@@ -453,7 +459,6 @@ function calculateScoreDistribution(records) {
              distributionPercent[range] = 0;
          }
      }
-
 
     return distributionPercent; // { range: percentage }
 }
@@ -469,6 +474,16 @@ function renderScoreDistributionChart(distributionData) {
         scoreDistributionChartInstance.destroy();
     }
 
+    // **** MODIFIED: Add color for the new category ****
+    const backgroundColors = [
+        'rgba(220, 53, 69, 0.7)', // <60 (Danger)
+        'rgba(255, 193, 7, 0.7)',  // 60-69 (Warning)
+        'rgba(13, 202, 240, 0.7)', // 70-79 (Info)
+        'rgba(13, 110, 253, 0.7)', // 80-89 (Primary)
+        'rgba(25, 135, 84, 0.7)',   // 90-100 (Success)
+        'rgba(108, 117, 125, 0.5)' // 未完成/无分数 (Secondary/Muted)
+    ];
+
     scoreDistributionChartInstance = new Chart(ctx, {
         type: 'pie',
         data: {
@@ -476,13 +491,8 @@ function renderScoreDistributionChart(distributionData) {
             datasets: [{
                 label: '人员占比 (%)',
                 data: data,
-                backgroundColor: [
-                    'rgba(220, 53, 69, 0.7)', // <60 (Danger)
-                    'rgba(255, 193, 7, 0.7)',  // 60-69 (Warning)
-                    'rgba(13, 202, 240, 0.7)', // 70-79 (Info)
-                    'rgba(13, 110, 253, 0.7)', // 80-89 (Primary)
-                    'rgba(25, 135, 84, 0.7)'   // 90-100 (Success)
-                ],
+                // **** MODIFIED: Ensure colors match labels ****
+                backgroundColor: labels.map((label, index) => backgroundColors[index % backgroundColors.length]),
                 borderColor: '#fff',
                 borderWidth: 1
             }]
