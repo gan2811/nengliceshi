@@ -29,6 +29,8 @@ async function loadResultDataFromCloud() {
         // 1. 查询 Assessment 表
         const query = new AV.Query('Assessment');
         query.include('userPointer'); // 同时加载关联的 UserProfile 数据
+        query.include('userPointer.positionPointer');
+        query.include('userPointer.stationPointer');
         const assessment = await query.get(assessmentId);
         currentCloudAssessment = assessment; // 保存到全局变量
 
@@ -58,8 +60,10 @@ function populateBasicInfo(assessment) {
     const userInfo = assessment.get('userPointer'); // 获取关联的 UserProfile 对象
     document.getElementById('userName').textContent = userInfo ? userInfo.get('name') : '未知';
     document.getElementById('employeeId').textContent = userInfo ? userInfo.get('employeeId') : '未知';
-    document.getElementById('station').textContent = userInfo ? getStationName(userInfo.get('stationCode')) : '未知';
-    document.getElementById('position').textContent = getPositionName(assessment.get('positionCode'));
+    const stationPointer = userInfo ? userInfo.get('stationPointer') : null;
+    document.getElementById('station').textContent = stationPointer ? stationPointer.get('stationName') : '未知';
+    const positionPointer = userInfo ? userInfo.get('positionPointer') : null;
+    document.getElementById('position').textContent = positionPointer ? positionPointer.get('positionName') : '未知';
     document.getElementById('assessorName').textContent = assessment.get('assessorName') || '未记录';
     document.getElementById('assessmentTimestamp').textContent = formatDate(assessment.get('endTime'), true);
     

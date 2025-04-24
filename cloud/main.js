@@ -3,6 +3,122 @@
 // 确保包含了 leanengine 模块
 const AV = require('leanengine');
 
+// --- Helper Functions ---
+
+// Finds UserProfile object by employeeId, creates if not found
+async function findUserProfileByEmployeeId(employeeId, employeeName) {
+    if (!employeeId) {
+        throw new Error("必须提供被测评人ID (employeeId)。");
+    }
+    const profileQuery = new AV.Query('UserProfile');
+    const employeeIdNum = parseInt(employeeId, 10);
+    if (isNaN(employeeIdNum)) {
+         // If the input ID is not a number, we cannot match or create with Number type
+         throw new Error(`提供的工号 "${employeeId}" 不是有效的数字格式。`);
+    }
+    profileQuery.equalTo('employeeId', employeeIdNum); // Query using the Number
+
+    const profiles = await profileQuery.find({ useMasterKey: true });
+
+    if (profiles.length === 0) {
+        console.log(`未找到工号为 "${employeeIdNum}" 的用户配置，将尝试创建新记录...`);
+        if (!employeeName) {
+             throw new Error(`无法创建新用户配置：未提供工号 "${employeeIdNum}" 对应的姓名。`);
+        }
+        // **** Convert employeeId to Number before setting ****
+        const employeeIdToSave = employeeIdNum; // Already converted and validated
+
+        const NewUserProfile = AV.Object.extend('UserProfile');
+        const newProfile = new NewUserProfile();
+        newProfile.set('employeeId', employeeIdToSave); // **** Set the Number type ****
+        newProfile.set('name', employeeName);     // Set the name
+        // Add any other default fields if necessary
+        try {
+            const savedProfile = await newProfile.save(null, { useMasterKey: true });
+            console.log(`成功创建并保存了新的 UserProfile 记录: ${savedProfile.id}`);
+            return savedProfile; // Return the newly created profile
+        } catch (saveError) {
+            console.error(`创建 UserProfile (工号: ${employeeIdToSave}) 失败:`, saveError);
+            // If creation failed (e.g., unique constraint violation), try finding again briefly?
+            // For simplicity, just rethrow for now.
+            throw new Error(`创建工号为 "${employeeIdToSave}" 的用户配置失败: ${saveError.message}`);
+        }
+    } else if (profiles.length > 1) {
+        console.warn(`找到多个工号为 "${employeeIdNum}" 的用户配置，将使用第一个。`);
+        // Consider erroring out if duplicates are problematic
+    }
+    // Return the first found profile
+    return profiles[0];
+}
+
+// Finds Station object by stationCode, creates if not found
+async function findStationByCode(stationCode, stationName) {
+    if (!stationCode) {
+        console.warn("未提供站点代码 (stationCode)，无法查找或创建。");
+        return null;
+    }
+    const stationQuery = new AV.Query('Station');
+    stationQuery.equalTo('stationCode', stationCode);
+    const stations = await stationQuery.find({ useMasterKey: true });
+
+    if (stations.length === 0) {
+        console.log(`未找到代码为 "${stationCode}" 的站点，将尝试创建新记录...`);
+        if (!stationName) {
+             throw new Error(`无法创建新站点：未提供代码 "${stationCode}" 对应的名称。`);
+        }
+        // **** Create new Station ****
+        const NewStation = AV.Object.extend('Station');
+        const newStation = new NewStation();
+        newStation.set('stationCode', stationCode);
+        newStation.set('stationName', stationName);
+        try {
+            const savedStation = await newStation.save(null, { useMasterKey: true });
+            console.log(`成功创建并保存了新的 Station 记录: ${savedStation.id}`);
+            return savedStation;
+        } catch (saveError) {
+            console.error(`创建 Station (代码: ${stationCode}) 失败:`, saveError);
+            throw new Error(`创建代码为 "${stationCode}" 的站点失败: ${saveError.message}`);
+        }
+    } else if (stations.length > 1) {
+         console.warn(`找到多个代码为 "${stationCode}" 的站点，将使用第一个。`);
+    }
+    return stations[0];
+}
+
+// Finds Position object by positionCode, creates if not found
+async function findPositionByCode(positionCode, positionName) {
+    if (!positionCode) {
+        console.warn("未提供岗位代码 (positionCode)，无法查找或创建。");
+        return null;
+    }
+    const positionQuery = new AV.Query('Position');
+    positionQuery.equalTo('positionCode', positionCode);
+    const positions = await positionQuery.find({ useMasterKey: true });
+
+    if (positions.length === 0) {
+        console.log(`未找到代码为 "${positionCode}" 的岗位，将尝试创建新记录...`);
+        if (!positionName) {
+             throw new Error(`无法创建新岗位：未提供代码 "${positionCode}" 对应的名称。`);
+        }
+        // **** Create new Position ****
+        const NewPosition = AV.Object.extend('Position');
+        const newPosition = new NewPosition();
+        newPosition.set('positionCode', positionCode);
+        newPosition.set('positionName', positionName);
+        try {
+            const savedPosition = await newPosition.save(null, { useMasterKey: true });
+            console.log(`成功创建并保存了新的 Position 记录: ${savedPosition.id}`);
+            return savedPosition;
+        } catch (saveError) {
+            console.error(`创建 Position (代码: ${positionCode}) 失败:`, saveError);
+            throw new Error(`创建代码为 "${positionCode}" 的岗位失败: ${saveError.message}`);
+        }
+    } else if (positions.length > 1) {
+         console.warn(`找到多个代码为 "${positionCode}" 的岗位，将使用第一个。`);
+    }
+    return positions[0];
+}
+
 /**
  * 云函数：提交测评结果 (兼容 Node.js v8 版本)
  * 接收前端发送的测评数据包，并将其保存到 LeanCloud 数据库中。
@@ -12,10 +128,16 @@ const AV = require('leanengine');
  * @returns {Promise<string>} - 成功时返回保存的 Assessment 对象的 objectId
  */
 AV.Cloud.define('submitAssessmentCloud', async (request) => {
-    // 打印日志确认函数开始执行
     console.log("[submitAssessmentCloud] Received request. Function starting...");
+    // **** 1. 身份验证 ****
+    const user = request.currentUser;
+    if (!user) {
+        throw new AV.Cloud.Error('用户未登录，无法提交测评。', { code: 401 }); // 401 Unauthorized
+    }
+    console.log(`[submitAssessmentCloud] User authenticated: ${user.id}`);
 
-    const assessmentData = request.params.assessmentData;
+    const { assessmentData, assessmentObjectId } = request.params;
+
     if (!assessmentData) {
         console.error("[submitAssessmentCloud] Error: Missing assessmentData in request parameters.");
         throw new AV.Cloud.Error('缺少必要的测评数据 (assessmentData)。', { code: 400 });
@@ -29,7 +151,8 @@ AV.Cloud.define('submitAssessmentCloud', async (request) => {
     }
 
     // 从传递的数据中获取必要信息
-    const userInfo = assessmentData.userInfo;
+    const assesseeEmployeeId = assessmentData.employeeId;
+    const assesseeEmployeeName = assessmentData.employeeName;
     const assessorName = assessmentData.assessor;
     const questions = assessmentData.questions;
     const answers = assessmentData.answers;
@@ -39,444 +162,500 @@ AV.Cloud.define('submitAssessmentCloud', async (request) => {
     const totalActiveSeconds = assessmentData.totalActiveSeconds || 0;
     const assessmentEndTime = assessmentData.timestamp ? new Date(assessmentData.timestamp) : new Date();
     const startTime = assessmentData.startTime ? new Date(assessmentData.startTime) : null;
-    const assessmentId = assessmentData.id;
+    const assessmentIdFromData = assessmentData.assessmentId;
+    const stationCode = assessmentData.stationCode;
+    const stationName = assessmentData.stationName;
+    const positionCode = assessmentData.positionCode;
+    const positionName = assessmentData.positionName;
 
     // 增强数据校验 (兼容旧版 Node.js)
-    const hasUserInfo = !!userInfo;
-    const hasEmployeeId = hasUserInfo && !!userInfo.employeeId;
-    const hasName = hasUserInfo && !!userInfo.name;
-    if (!hasUserInfo || !hasEmployeeId || !hasName || !assessmentId || !assessorName || !questions || !answers) {
-         console.error("[submitAssessmentCloud] Error: Missing critical info in assessmentData:", { hasUserInfo: hasUserInfo, hasEmployeeId: hasEmployeeId, hasName: hasName, hasAssessmentId: !!assessmentId, hasAssessor: !!assessorName, hasQuestions: !!questions, hasAnswers: !!answers });
-         throw new AV.Cloud.Error('测评数据中缺少关键信息 (如用户信息, assessmentId, assessor, questions, answers)。', { code: 400 });
+    const hasEmployeeId = !!assesseeEmployeeId;
+    const hasName = !!assesseeEmployeeName;
+    if (!hasEmployeeId || !hasName || !assessmentIdFromData || !assessorName || !questions || !answers) {
+         console.error("[submitAssessmentCloud] Error: Missing critical info in assessmentData:", { hasEmployeeId: hasEmployeeId, hasName: hasName, hasAssessmentId: !!assessmentIdFromData, hasAssessor: !!assessorName, hasQuestions: !!questions, hasAnswers: !!answers });
+         throw new AV.Cloud.Error('测评数据中缺少关键信息 (如员工信息, assessmentId, assessor, questions, answers)。', { code: 400 });
+    }
+
+    // **** Add validation for names if creation is possible ****
+    if (!stationCode || !stationName || !positionCode || !positionName) {
+         throw new AV.Cloud.Error('提交失败：缺少站点或岗位代码/名称。', { code: 400 });
     }
 
     try {
-        // --- 1. 获取或创建 UserProfile ---
-        console.log("[submitAssessmentCloud] Step 1: Getting or creating UserProfile...");
-        const userQuery = new AV.Query('UserProfile');
-        const employeeIdNum = parseInt(userInfo.employeeId, 10);
-        if (isNaN(employeeIdNum)) {
-            console.error(`[submitAssessmentCloud] Error: Invalid employeeId format: ${userInfo.employeeId}`);
-            throw new AV.Cloud.Error(`无效的 employeeId: ${userInfo.employeeId}`, { code: 400 });
-        }
-        userQuery.equalTo('employeeId', employeeIdNum);
-        let userProfile = await userQuery.first();
+        // --- Find Assessee User Profile --- (Correct step)
+        console.log(`[submitAssessmentCloud] Finding/Creating UserProfile for assesseeEmployeeId: ${assesseeEmployeeId}...`);
+        const assesseeUserProfile = await findUserProfileByEmployeeId(assesseeEmployeeId, assesseeEmployeeName);
+        console.log(`[submitAssessmentCloud] Using UserProfile for assessee: ${assesseeUserProfile.id}`);
 
-        if (!userProfile) {
-            console.log(`[submitAssessmentCloud] UserProfile not found (employeeId: ${employeeIdNum}), creating new...`);
-            userProfile = new AV.Object('UserProfile');
-            userProfile.set('employeeId', employeeIdNum);
-            userProfile.set('name', userInfo.name);
-            userProfile.set('stationCode', userInfo.station);
-            userProfile.set('positionCode', userInfo.position);
-            // 使用 Master Key 保存以忽略 ACL 限制
-            userProfile = await userProfile.save(null, { useMasterKey: true });
-            console.log(`[submitAssessmentCloud] New UserProfile created: ${userProfile.id}`);
-        } else {
-             console.log(`[submitAssessmentCloud] Existing UserProfile found: ${userProfile.id}`);
+        // **** Find Station and Position Objects ****
+        const stationObject = await findStationByCode(stationCode, stationName);
+        const positionObject = await findPositionByCode(positionCode, positionName);
+        // Add checks if station/position are mandatory
+        if (!stationObject) throw new Error("提交失败：无效的站点代码。");
+        if (!positionObject) throw new Error("提交失败：无效的岗位代码。");
+
+        // **** 新增：在处理 Assessment 之前，更新 UserProfile ****
+        try {
+            console.log(`[submitAssessmentCloud] Updating UserProfile ${assesseeUserProfile.id} with station/position pointers...`);
+            assesseeUserProfile.set('stationPointer', stationObject);
+            assesseeUserProfile.set('positionPointer', positionObject);
+            await assesseeUserProfile.save(null, { useMasterKey: true });
+            console.log(`[submitAssessmentCloud] UserProfile ${assesseeUserProfile.id} updated successfully.`);
+        } catch (profileSaveError) {
+            console.error(`[submitAssessmentCloud] Error updating UserProfile ${assesseeUserProfile.id}:`, profileSaveError);
+            // 根据策略决定是否继续，这里选择抛出错误阻止继续
+            throw new AV.Cloud.Error(`更新用户信息时出错: ${profileSaveError.message}`, { code: 500 });
         }
 
-        // --- 2. **修改：查找或创建 Assessment 对象** ---
-        console.log(`[submitAssessmentCloud] Step 2: Finding or creating Assessment object (frontendId: ${assessmentId})...`);
+        // --- 2. **修改：查找或创建 Assessment 对象，并验证权限** ---
+        console.log(`[submitAssessmentCloud] Step 2: Finding/creating Assessment (objectId: ${assessmentObjectId})...`);
         const Assessment = AV.Object.extend('Assessment');
         let assessment;
 
-        // **新增：尝试根据 frontendId 查找已存在的 paused 记录**
-        const existingQuery = new AV.Query('Assessment');
-        // 注意：需要确保 assessmentId (前端ID) 确实被存放在 frontendId 字段中
-        // 我们在 pauseAssessmentCloud 中是这样做的，这里保持一致
-        let assessmentIdNumForQuery;
-        try {
-            assessmentIdNumForQuery = parseInt(assessmentId, 10);
-            if (isNaN(assessmentIdNumForQuery)) throw new Error('Invalid ID format');
-        } catch (e) {
-             console.error(`[submitAssessmentCloud] Invalid frontendId format for query: ${assessmentId}`);
-             assessmentIdNumForQuery = null;
-        }
-        
-        // **** 添加日志 ****
-        console.log(`[submitAssessmentCloud] Attempting to find existing assessment with assessmentId: ${assessmentIdNumForQuery}`);
+        if (assessmentObjectId) {
+            // 如果前端传递了 objectId (意味着是之前暂停或保存过的)
+            try {
+                const query = new AV.Query('Assessment');
+                assessment = await query.get(assessmentObjectId, { useMasterKey: true });
+                console.log(`[submitAssessmentCloud] Found existing assessment by objectId: ${assessment.id}`);
 
-        if (assessmentIdNumForQuery !== null) {
-             existingQuery.equalTo('assessmentId', assessmentIdNumForQuery); 
-             // existingQuery.equalTo('status', 'paused'); // 可选：严格要求必须是 paused 状态才能更新
-             assessment = await existingQuery.first({ useMasterKey: true });
-             // **** 添加日志 ****
-             console.log(`[submitAssessmentCloud] Result of existing assessment query:`, assessment ? `Found objectId: ${assessment.id}` : 'null');
-        }
+                // **** 权限检查 ****
+                const owner = assessment.get('owner');
+                if (!owner || owner.id !== user.id) {
+                    console.error(`[submitAssessmentCloud] Permission denied: User ${user.id} tried to submit assessment ${assessment.id} owned by ${owner?.id}`);
+                    throw new AV.Cloud.Error('您没有权限提交此测评记录。', { code: 403 }); // 403 Forbidden
+                }
+                console.log(`[submitAssessmentCloud] Ownership verified for user ${user.id}.`);
+                assessment.set('status', 'completed'); // 更新状态
 
-        if (assessment) {
-            // **** 添加日志 ****
-            console.log(`[submitAssessmentCloud] Decision: Updating existing assessment (objectId: ${assessment.id}).`);
-            // 更新状态和完成信息
-            assessment.set('status', 'completed');
+            } catch (error) {
+                // 如果 get 失败 (例如 ID 无效或记录不存在)
+                console.error(`[submitAssessmentCloud] Error fetching assessment with objectId ${assessmentObjectId}:`, error);
+                throw new AV.Cloud.Error('找不到要提交的测评记录或获取时出错。', { code: 404 }); // 404 Not Found or other error
+            }
         } else {
-            // **** 添加日志 ****
-            console.log(`[submitAssessmentCloud] Decision: Creating new assessment for assessmentId: ${assessmentId}.`);
+            // 如果没有 objectId (意味着是第一次提交，之前未暂停)
+            console.log(`[submitAssessmentCloud] No objectId provided. Creating new assessment.`);
             assessment = new Assessment();
-            // 设置 assessmentId (确保是 Number)
+            // **** 设置负责人 ****
+            assessment.set('owner', user);
+            assessment.set('status', 'completed');
+            // 设置 assessmentId (前端 ID，如果需要)
             let assessmentIdNumForSet;
             try {
-                assessmentIdNumForSet = parseInt(assessmentId, 10);
-                if (isNaN(assessmentIdNumForSet)) throw new AV.Cloud.Error(`无效的 assessmentId: ${assessmentId}`, { code: 400 });
-            } catch (parseError) {
-                 throw new AV.Cloud.Error(`解析 assessmentId 失败: ${assessmentId}`, { code: 400 });
-            }
+                assessmentIdNumForSet = parseInt(assessmentIdFromData, 10);
+                if (isNaN(assessmentIdNumForSet)) throw new Error();
             assessment.set('assessmentId', assessmentIdNumForSet);
-            assessment.set('status', 'completed'); // 新记录也是 completed
+            } catch (e) { /* 忽略或记录警告 */ console.warn(`Invalid assessmentId format: ${assessmentIdFromData}`); }
         }
 
         // --- 统一设置/更新其他字段 ---
-        assessment.set('userPointer', AV.Object.createWithoutData('UserProfile', userProfile.id));
+        // 使用 userProfile (如果获取成功) 或 user 对象填充信息
+        assessment.set('userPointer', assesseeUserProfile);
         assessment.set('assessorName', assessorName);
-        assessment.set('positionCode', assessmentData.position);
-        assessment.set('startTime', startTime); // startTime 应该是首次开始时间，更新时也用原来的
-        assessment.set('endTime', assessmentEndTime); // 完成时间
+        assessment.set('startTime', startTime);
+        assessment.set('endTime', assessmentEndTime);
         assessment.set('totalActiveSeconds', totalActiveSeconds);
-        assessment.set('durationMinutes', Math.round(totalActiveSeconds / 60));
+        assessment.set('durationMinutes', Math.round((totalActiveSeconds || 0) / 60));
         assessment.set('totalScore', totalScore);
         assessment.set('maxPossibleScore', maxPossibleScore);
         assessment.set('scoreRate', scoreRate);
-        // 清除暂停时可能存在的字段
         assessment.unset('elapsedSeconds');
         assessment.unset('currentQuestionIndex');
 
         const savedAssessment = await assessment.save(null, { useMasterKey: true });
         console.log(`[submitAssessmentCloud] Assessment saved/updated: ${savedAssessment.id}`);
 
-        // --- 3. **修改：更新或创建 AssessmentDetail 对象数组** ---
-        console.log(`[submitAssessmentCloud] Step 3: Preparing ${Array.isArray(questions) ? questions.length : 0} AssessmentDetail objects...`);
+        // --- 处理 AssessmentDetail (逻辑基本不变，但要用 savedAssessment) ---
+        console.log(`[submitAssessmentCloud] Step 3: Preparing AssessmentDetail objects...`);
         const AssessmentDetail = AV.Object.extend('AssessmentDetail');
         const detailObjectsToSave = [];
         const existingDetailsMap = new Map();
-
-        // **新增：如果是更新，先查询已有的 Detail 记录**
-        if (assessment && assessment.id) { // 检查 assessment 是否非空且有 objectId (表示它是从数据库找到的)
-            console.log(`[submitAssessmentCloud] Assessment ${assessment.id} existed, fetching its details...`);
+        if (assessmentObjectId) { // 只有更新时才需要查旧的
             const detailQuery = new AV.Query('AssessmentDetail');
-            // 使用 savedAssessment，因为此时 assessment 已经保存/更新，拥有最新的 objectId
             detailQuery.equalTo('assessmentPointer', savedAssessment); 
             detailQuery.limit(1000);
             const existingDetails = await detailQuery.find({ useMasterKey: true });
             existingDetails.forEach(detail => {
-                const qId = detail.get('questionId'); // 假设 questionId 是 Number
-                if (qId !== undefined) {
-                    existingDetailsMap.set(qId, detail);
-                }
+                const qId = detail.get('questionId');
+                if (qId !== undefined) existingDetailsMap.set(qId, detail);
             });
-            console.log(`[submitAssessmentCloud] Found ${existingDetailsMap.size} existing details for assessment ${savedAssessment.id}.`);
+            console.log(`[submitAssessmentCloud] Found ${existingDetailsMap.size} existing details.`);
         }
-
-        if (Array.isArray(questions)) {
-            for (const question of questions) { // 改为 for...of 以便处理 async/await（虽然这里没用）
-                if (!question || typeof question !== 'object' || !question.id) {
-                    console.warn("[submitAssessmentCloud] Skipping invalid question object:", question);
-                    continue;
-                }
-                const answer = answers[question.id];
-                let detailObject;
+        const finalQuestions = assessmentData.questions || [];
+        const finalAnswers = assessmentData.answers || {};
+        for (const question of finalQuestions) {
                 let questionIdNum;
                 try {
                     questionIdNum = parseInt(question.id, 10);
-                    if (isNaN(questionIdNum)) throw new Error('Invalid question ID format');
-                } catch (e) {
-                    console.warn(`[submitAssessmentCloud] Invalid question ID format ${question.id}. Skipping detail.`);
-                    continue;
-                }
+                 if (isNaN(questionIdNum)) continue;
+             } catch (e) { continue; }
 
-                detailObject = existingDetailsMap.get(questionIdNum); // 尝试获取旧的
-
-                if (!detailObject) { // 如果没有旧的，创建新的
+             let detailObject = existingDetailsMap.get(questionIdNum);
+             if (!detailObject) {
                     detailObject = new AssessmentDetail();
                     detailObject.set('assessmentPointer', savedAssessment);
                     detailObject.set('questionId', questionIdNum);
-                } else {
-                    console.log(`[submitAssessmentCloud] Updating existing detail for questionId ${questionIdNum}.`);
-                }
+             } // else { console.log(`Updating detail for qId ${questionIdNum}`); }
 
-                // 更新或设置 Detail 数据
                 detailObject.set('questionContent', question.content);
                 detailObject.set('standardScore', question.standardScore);
                 detailObject.set('section', question.section);
                 detailObject.set('type', question.type);
                 detailObject.set('knowledgeSource', question.knowledgeSource);
-                detailObject.set('score', answer && answer.score !== undefined && answer.score !== null ? answer.score : null);
-                detailObject.set('comment', answer && answer.comment ? answer.comment : '');
-                detailObject.set('durationSeconds', Number(answer && answer.duration !== undefined && answer.duration !== null ? answer.duration : 0));
-                // 提交时通常不需要保存 standardAnswer
-                // detailObject.set('standardAnswer', question.standardAnswer);
-
+             const answer = finalAnswers[questionIdNum];
+             detailObject.set('score', answer?.score ?? null);
+             detailObject.set('comment', answer?.comment ?? '');
+             detailObject.set('durationSeconds', Number(answer?.duration ?? 0));
+             // **** 保存 startTime ****
+             detailObject.set('startTime', answer && answer.startTime ? new Date(answer.startTime) : null);
                 detailObjectsToSave.push(detailObject);
-            }
-        } else {
-            console.error("[submitAssessmentCloud] Error: assessmentData.questions is not an array!");
         }
-
-        // --- 4. 批量保存 AssessmentDetail 对象 (使用 saveAll) ---
         if (detailObjectsToSave.length > 0) {
             console.log(`[submitAssessmentCloud] Step 4: Saving/Updating ${detailObjectsToSave.length} AssessmentDetail objects...`);
             await AV.Object.saveAll(detailObjectsToSave, { useMasterKey: true });
-            console.log(`[submitAssessmentCloud] ${detailObjectsToSave.length} AssessmentDetails saved/updated.`);
-        } else {
-             console.log(`[submitAssessmentCloud] Step 4: No valid AssessmentDetail objects to save.`);
         }
 
-        console.log(`[submitAssessmentCloud] Assessment processing completed successfully for assessmentId: ${assessmentId}.`);
-        return savedAssessment.id; // 返回成功保存/更新的 Assessment 的 objectId
+        console.log(`[submitAssessmentCloud] Processing completed for assessment: ${savedAssessment.id}.`);
+        // **** 返回 objectId ****
+        return savedAssessment.id;
 
     } catch (error) {
-        console.error(`[submitAssessmentCloud] Error processing assessment (assessmentId: ${assessmentId}):`, error);
-        // 改进错误抛出，包含堆栈信息
+        console.error(`[submitAssessmentCloud] Error processing assessment (objectId: ${assessmentObjectId}):`, error);
+        // 保持之前的错误抛出逻辑
         const cloudError = new AV.Cloud.Error(error.message || '保存测评时发生未知错误。', {
-            code: error.code || 500
+            code: error.code || (error instanceof AV.Cloud.Error ? 400 : 500) // 更智能的错误码
         });
-        // 尝试附加堆栈信息，如果存在的话
-        if (error.stack) {
-            cloudError.details = { stack: error.stack };
-        }
+        if (error.stack) cloudError.details = { stack: error.stack };
         throw cloudError;
+    }
+});
+
+// **** 新增：获取可恢复测评的云函数 ****
+AV.Cloud.define('getResumableAssessment', async (request) => {
+    console.log("[getResumableAssessment] Function starting...");
+    const user = request.currentUser;
+
+    if (!user) {
+        console.log("[getResumableAssessment] User not logged in.");
+        // 返回 null 或空对象表示没有可恢复的测评，而不是抛出错误，因为前端需要区分这种情况
+        return null; 
+    }
+    console.log(`[getResumableAssessment] User logged in: ${user.id}`);
+
+    try {
+        const query = new AV.Query('Assessment');
+        // **** Include all necessary pointers ****
+        query.include('userPointer');
+        // query.include('stationPointer'); // **** 移除 ****
+        // query.include('positionPointer'); // **** 移除 ****
+        // **** 新增：包含 UserProfile 的关联指针 ****
+        query.include('userPointer.stationPointer');
+        query.include('userPointer.positionPointer');
+
+        // **** 从 request.params 中获取 assessmentId ****
+        const { assessmentId } = request.params;
+        if (!assessmentId) {
+            // 如果前端没有传递 assessmentId，则抛出错误
+            throw new AV.Cloud.Error('缺少必要的 assessmentId 参数。', { code: 400 });
+        }
+
+        // **** 使用从请求中获取的 assessmentId ****
+        const assessment = await query.get(assessmentId, { useMasterKey: true });
+        // ... (Verify ownership and status) ...
+
+        // Fetch details (Existing logic)
+        // ...
+
+        // Assemble response (Use included pointers)
+        const assesseeProfile = assessment.get('userPointer');
+        // **** 修改：从 assesseeProfile 获取 station 和 position ****
+        const station = assesseeProfile ? assesseeProfile.get('stationPointer') : null;
+        const position = assesseeProfile ? assesseeProfile.get('positionPointer') : null;
+
+        // ... (Assemble userAnswers and reconstructedQuestions) ...
+        // **** 查询并处理 AssessmentDetail ****
+        const detailQuery = new AV.Query('AssessmentDetail');
+        detailQuery.equalTo('assessmentPointer', assessment); // Use the fetched assessment object
+        detailQuery.limit(1000); // Maximum details per assessment
+        const assessmentDetails = await detailQuery.find({ useMasterKey: true });
+        console.log(`[getResumableAssessment] Found ${assessmentDetails.length} AssessmentDetail records for assessment ${assessmentId}.`);
+
+        const userAnswers = {};
+        const reconstructedQuestions = [];
+        for (const detail of assessmentDetails) {
+            const questionId = detail.get('questionId');
+            const questionContent = detail.get('questionContent');
+            // **** 获取其他必要字段 ****
+            const score = detail.get('score'); // score might be null
+            const comment = detail.get('comment') ?? '';
+            const durationSeconds = detail.get('durationSeconds') ?? 0;
+            const detailStartTime = detail.get('startTime'); // startTime might be null
+            const standardScore = detail.get('standardScore');
+            const section = detail.get('section');
+            const type = detail.get('type');
+            const knowledgeSource = detail.get('knowledgeSource');
+
+            // 检查关键字段是否存在 (questionId 和 content 必须有)
+            if (questionId !== undefined && questionId !== null && questionContent !== undefined && questionContent !== null) {
+                userAnswers[questionId] = {
+                    score: score,
+                    comment: comment,
+                    duration: durationSeconds,
+                    startTime: detailStartTime ? detailStartTime.toISOString() : null // 确保返回 ISO 格式或 null
+                };
+                reconstructedQuestions.push({
+                    id: questionId,
+                    content: questionContent,
+                    standardScore: standardScore,
+                    section: section,
+                    type: type,
+                    knowledgeSource: knowledgeSource
+                });
+            } else {
+                console.warn(`[getResumableAssessment] Skipping detail record due to missing questionId or content. Detail ID: ${detail.id}`);
+            }
+        }
+
+        if (reconstructedQuestions.length === 0 && assessmentDetails.length > 0) {
+            console.warn('[getResumableAssessment] Warning: Found details but failed to reconstruct questions. Check detail processing logic and required fields (questionId, content).');
+        } else if (reconstructedQuestions.length === 0) {
+            console.log('[getResumableAssessment] No questions reconstructed, likely because no details were found or details were invalid.');
+        }
+
+        // Sort questions by ID for consistency
+        reconstructedQuestions.sort((a, b) => a.id - b.id);
+        console.log(`[getResumableAssessment] Reconstructed ${reconstructedQuestions.length} questions.`); // 添加日志
+
+        const resumableData = {
+            objectId: assessment.id,
+            assessmentId: assessment.get('assessmentId'), // Use assessmentId from backend
+            // Assessee Info from userPointer
+            employeeName: assesseeProfile ? assesseeProfile.get('name') : 'N/A',
+            employeeId: assesseeProfile ? assesseeProfile.get('employeeId') : 'N/A',
+            // Station/Position Info from pointers
+            stationCode: station ? station.get('stationCode') : null,
+            stationName: station ? station.get('stationName') : null,
+            positionCode: position ? position.get('positionCode') : null,
+            positionName: position ? position.get('positionName') : null,
+            // **** Other assessment fields ****
+            status: assessment.get('status'), // Keep status
+            currentQuestionIndex: assessment.get('currentQuestionIndex') ?? 0, // Default to 0 if null
+            elapsedSeconds: assessment.get('elapsedSeconds') ?? 0,
+            totalActiveSeconds: assessment.get('totalActiveSeconds') ?? 0,
+            timestamp: assessment.get('timestamp') ? assessment.get('timestamp').toISOString() : null, // Pause time as ISO string or null
+            startTime: assessment.get('startTime') ? assessment.get('startTime').toISOString() : null, // Original start time as ISO string or null
+            assessorName: assessment.get('assessorName'), // Might be null
+            maxScore: assessment.get('maxPossibleScore'), // Might be null
+            // **** 关键：添加 questions 和 answers ****
+            questions: reconstructedQuestions,
+            answers: userAnswers
+        };
+
+        // **** 移除外部赋值 ****
+        // resumableData.userAnswers = userAnswers;
+        // resumableData.reconstructedQuestions = reconstructedQuestions;
+
+        return resumableData;
+
+    } catch (error) {
+        console.error(`[getResumableAssessment] Error fetching resumable assessment for user ${user.id}:`, error);
+        // 抛出错误，让前端知道获取失败
+        throw new AV.Cloud.Error('获取可恢复的测评失败: ' + error.message, {
+             code: 500, 
+             details: error.stack 
+        });
     }
 });
 
 // **** 新增：处理暂停测评的云函数 ****
 AV.Cloud.define('pauseAssessmentCloud', async (request) => {
     console.log('[pauseAssessmentCloud] Function started.');
-    const { assessmentData } = request.params;
-    const user = request.currentUser; // Get current logged-in user (if applicable)
+    // **** 1. 身份验证 ****
+    const user = request.currentUser;
+    if (!user) {
+        throw new AV.Cloud.Error('用户未登录，无法暂停测评。', { code: 401 });
+    }
+    console.log(`[pauseAssessmentCloud] User authenticated: ${user.id}`);
 
-    // --- 基本验证 ---
+    const { assessmentData, assessmentObjectId } = request.params; // **** 前端需要传递 objectId ****
+
     if (!assessmentData) {
         throw new AV.Cloud.Error('Missing assessmentData parameter.', { code: 400 });
     }
-    if (!assessmentData.id) {
-        throw new AV.Cloud.Error('Assessment data must have an ID.', { code: 400 });
+    if (!assessmentData.assessmentId) {
+        throw new AV.Cloud.Error('Assessment data must have an assessmentId.', { code: 400 });
     }
-    console.log(`[pauseAssessmentCloud] Processing assessment ID: ${assessmentData.id}`);
+    console.log(`[pauseAssessmentCloud] Processing assessment (objectId: ${assessmentObjectId}, assessmentId: ${assessmentData.assessmentId})...`);
 
-    const assessmentId = String(assessmentData.id); // Ensure ID is a string
+    const stationCode = assessmentData.stationCode;
+    const stationName = assessmentData.stationName;
+    const positionCode = assessmentData.positionCode;
+    const positionName = assessmentData.positionName;
+
+    // **** Add validation for names if creation is possible ****
+    if (!stationCode || !stationName || !positionCode || !positionName) {
+         throw new AV.Cloud.Error('暂停失败：缺少站点或岗位代码/名称。', { code: 400 });
+    }
 
     try {
-        // --- 1. 准备 Assessment 对象数据 ---
-        console.log('[pauseAssessmentCloud] Step 1: Preparing Assessment object data...');
+        // --- 1. 查找或创建 Assessment 对象，并验证权限 ---
+        console.log('[pauseAssessmentCloud] Step 1: Finding/creating Assessment object...');
         const Assessment = AV.Object.extend('Assessment');
-        // 尝试获取已存在的记录，以便更新而不是创建新的
         let assessment;
+
+        if (assessmentObjectId) {
+            // 如果前端传递了 objectId
         try {
             const query = new AV.Query('Assessment');
-            // **** 修正：统一使用 assessmentId (Number) 作为查询依据 ****
-            let assessmentIdNum;
-            try {
-                assessmentIdNum = parseInt(assessmentId, 10); // assessmentId 是前端传来的 ID
-                if (isNaN(assessmentIdNum)) throw new Error('Invalid ID format');
-            } catch (e) {
-                console.error(`[pauseAssessmentCloud] Invalid assessmentId format for query: ${assessmentId}`);
-                assessmentIdNum = null; // 无法查询
+                assessment = await query.get(assessmentObjectId, { useMasterKey: true });
+                console.log(`[pauseAssessmentCloud] Found existing assessment by objectId: ${assessment.id}`);
+                
+                // **** 权限检查 ****
+                const owner = assessment.get('owner');
+                if (!owner || owner.id !== user.id) {
+                     console.error(`[pauseAssessmentCloud] Permission denied: User ${user.id} tried to pause assessment ${assessment.id} owned by ${owner?.id}`);
+                    throw new AV.Cloud.Error('您没有权限暂停此测评记录。', { code: 403 });
             }
-
-            if (assessmentIdNum !== null) {
-                query.equalTo('assessmentId', assessmentIdNum);
-                assessment = await query.first({ useMasterKey: true });
+                console.log(`[pauseAssessmentCloud] Ownership verified for user ${user.id}.`);
+                assessment.set('status', 'paused'); // 更新状态为 paused
+            } catch (error) {
+                 console.error(`[pauseAssessmentCloud] Error fetching assessment with objectId ${assessmentObjectId}:`, error);
+                throw new AV.Cloud.Error('找不到要暂停的测评记录或获取时出错。', { code: 404 });
             }
-
-            if (!assessment) {
-                console.log(`[pauseAssessmentCloud] No existing assessment found for assessmentId ${assessmentIdNum}. Creating new record.`);
-                assessment = new Assessment();
-                // **** 设置 assessmentId (Number), 移除 frontendId ****
-                if (assessmentIdNum !== null) {
-                     assessment.set('assessmentId', assessmentIdNum);
                  } else {
-                     // 如果前端传来的 ID 无效，这里可能会有问题，或者依赖自动生成的 objectId
-                     console.error(`[pauseAssessmentCloud] Cannot set assessmentId because the provided ID was invalid: ${assessmentId}`);
-                     // 可以考虑在此处抛出错误阻止继续执行
-                     // throw new AV.Cloud.Error('Invalid assessment ID provided.', { code: 400 });
-                 }
-                // assessment.set('frontendId', assessmentId); // <-- 移除
-            } else {
-                console.log(`[pauseAssessmentCloud] Found existing assessment ${assessment.id} for assessmentId ${assessmentIdNum}. Updating.`);
-            }
-        } catch (findError) {
-             console.error(`[pauseAssessmentCloud] Error finding assessment for assessmentId ${assessmentIdNum}, creating new one. Error:`, findError);
+            // 如果没有 objectId (第一次暂停)
+             console.log(`[pauseAssessmentCloud] No objectId provided. Creating new assessment.`);
              assessment = new Assessment();
-             // **** 尝试设置 assessmentId (Number) ****
-             let assessmentIdNumForCatch;
-             try {
-                  assessmentIdNumForCatch = parseInt(assessmentId, 10);
-                  if (isNaN(assessmentIdNumForCatch)) throw new Error('Invalid ID format');
-                  assessment.set('assessmentId', assessmentIdNumForCatch);
-             } catch (e) {
-                   console.error(`[pauseAssessmentCloud] Error setting assessmentId in catch block: ${assessmentId}`);
-             }
-             // assessment.set('frontendId', assessmentId); // <-- 移除
+            assessment.set('owner', user);
+            assessment.set('status', 'paused');
+            assessment.set('assessmentId', assessmentData.assessmentId);
         }
 
         // --- 填充或更新 Assessment 数据 ---
-        // **修改：改为处理 UserProfile，与 submitAssessmentCloud 对齐**
-        let userProfile;
-        if (assessmentData.userInfo && assessmentData.userInfo.employeeId) {
-            const userQuery = new AV.Query('UserProfile');
-            const employeeIdNum = parseInt(assessmentData.userInfo.employeeId, 10);
-            if (!isNaN(employeeIdNum)) {
-                userQuery.equalTo('employeeId', employeeIdNum);
-                try {
-                    userProfile = await userQuery.first({ useMasterKey: true });
-                    if (!userProfile) {
-                        console.log(`[pauseAssessmentCloud] UserProfile not found (employeeId: ${employeeIdNum}), creating new...`);
-                        userProfile = new AV.Object('UserProfile');
-                        userProfile.set('employeeId', employeeIdNum);
-                        userProfile.set('name', assessmentData.userInfo.name || '未知'); // 使用提供的信息
-                        // 可以选择性地设置其他信息，如果前端提供了的话
-                        if(assessmentData.userInfo.station) userProfile.set('stationCode', assessmentData.userInfo.station);
-                        if(assessmentData.position) userProfile.set('positionCode', assessmentData.position);
+        // **** ADD fields for the person being assessed ****
+        const assesseeEmployeeId = assessmentData.employeeId;
+        const assesseeEmployeeName = assessmentData.employeeName;
+        const assesseeUserProfile = await findUserProfileByEmployeeId(assesseeEmployeeId, assesseeEmployeeName);
+        assessment.set('userPointer', assesseeUserProfile);
 
-                        userProfile = await userProfile.save(null, { useMasterKey: true });
-                        console.log(`[pauseAssessmentCloud] New UserProfile created: ${userProfile.id}`);
-                    } else {
-                        console.log(`[pauseAssessmentCloud] Existing UserProfile found: ${userProfile.id}`);
-                        // 可选：如果找到现有用户，是否要用前端传来的信息更新？暂时不更新。
-                    }
-                    // 设置指向 UserProfile 的指针
-                    assessment.set('userPointer', AV.Object.createWithoutData('UserProfile', userProfile.id));
-                } catch (userError) {
-                    console.error(`[pauseAssessmentCloud] Error finding or creating UserProfile for employeeId ${employeeIdNum}:`, userError);
-                    assessment.unset('userPointer'); // 出错则不设置指针
-                }
-            } else {
-                 console.warn(`[pauseAssessmentCloud] Invalid employeeId format: ${assessmentData.userInfo.employeeId}. Cannot process UserProfile.`);
-                 assessment.unset('userPointer');
-            }
-        } else {
-             console.warn('[pauseAssessmentCloud] No userInfo or employeeId provided in assessmentData. Cannot process UserProfile.');
-             assessment.unset('userPointer');
-        }
-        // 保留直接设置字段作为补充或备用
-        assessment.set('userName', assessmentData.userInfo?.name || null);
-        assessment.set('userEmployeeId', assessmentData.userInfo?.employeeId || null);
-        assessment.set('userDepartment', assessmentData.userInfo?.department || null);
-        assessment.set('userStation', assessmentData.userInfo?.station || null);
-
-        // 岗位信息
-        if (assessmentData.position) {
-            assessment.set('positionCode', assessmentData.position);
-            // TODO: Consider fetching/setting positionName if needed/available
-        }
-        // 时间信息
-        assessment.set('startTime', assessmentData.startTime ? new Date(assessmentData.startTime) : null);
-        assessment.set('timestamp', assessmentData.timestamp ? new Date(assessmentData.timestamp) : new Date()); // Pause time
+        // ... Set other fields (startTime, timestamp, activeSeconds, currentQuestionIndex, etc.) ...
+        assessment.set('startTime', assessmentData.startTime ? new Date(assessmentData.startTime) : new Date());
+        assessment.set('timestamp', assessmentData.timestamp ? new Date(assessmentData.timestamp) : new Date());
         assessment.set('totalActiveSeconds', Number(assessmentData.totalActiveSeconds) || 0);
-        assessment.set('elapsedSeconds', Number(assessmentData.elapsedSeconds) || 0); // Total time elapsed since start
-        // 暂停时 durationMinutes 可以不计算或按活动时间计算
+        assessment.set('elapsedSeconds', Number(assessmentData.elapsedSeconds) || 0);
         assessment.set('durationMinutes', Math.round((Number(assessmentData.totalActiveSeconds) || 0) / 60));
-
-        // 状态信息 (关键)
-        assessment.set('status', 'paused'); // 设置状态为 paused
         assessment.set('currentQuestionIndex', Number(assessmentData.currentQuestionIndex) || 0);
         assessment.set('assessorName', assessmentData.assessor || null);
-
-        // 清除可能存在的旧的完成信息 (如果从已完成状态再次暂停，虽然不常见)
-        assessment.unset('score');
-        assessment.unset('maxScore');
-        assessment.unset('scoreRate');
-        assessment.unset('endTime');
-        // 显式设置 totalScore 等为 null
         assessment.set('totalScore', null);
-        assessment.set('maxPossibleScore', assessmentData.maxScore || null); // 可能需要保留最大分值
+        assessment.set('maxPossibleScore', assessmentData.maxScore || null);
         assessment.set('scoreRate', null);
+        assessment.unset('endTime');
 
-        // --- 2. 保存 Assessment 对象 ---
+        // **** Find Station and Position Objects ****
+        const stationObject = await findStationByCode(stationCode, stationName);
+        const positionObject = await findPositionByCode(positionCode, positionName);
+        // Add checks if station/position are mandatory
+        if (!stationObject) throw new Error("暂停失败：无效的站点代码。");
+        if (!positionObject) throw new Error("暂停失败：无效的岗位代码。");
+
+        // --- Set/Update fields --- (Use Pointers)
+        assessment.set('userPointer', assesseeUserProfile);
+        // assessment.set('stationPointer', stationObject);   // **** 移除 ****
+        // assessment.set('positionPointer', positionObject); // **** 移除 **** 
+
+        // **** 新增：更新 UserProfile ****
+        try {
+            console.log(`[pauseAssessmentCloud] Updating UserProfile ${assesseeUserProfile.id} with station/position pointers...`);
+            assesseeUserProfile.set('stationPointer', stationObject);
+            assesseeUserProfile.set('positionPointer', positionObject);
+            await assesseeUserProfile.save(null, { useMasterKey: true });
+            console.log(`[pauseAssessmentCloud] UserProfile ${assesseeUserProfile.id} updated successfully.`);
+        } catch (profileSaveError) {
+            console.error(`[pauseAssessmentCloud] Error updating UserProfile ${assesseeUserProfile.id}:`, profileSaveError);
+            throw new AV.Cloud.Error(`更新用户信息时出错: ${profileSaveError.message}`, { code: 500 });
+        }
+
+        // --- 2. 保存 Assessment 对象 --- 
         console.log('[pauseAssessmentCloud] Step 2: Saving Assessment object...');
         const savedAssessment = await assessment.save(null, { useMasterKey: true });
-        const savedAssessmentId = savedAssessment.id;
-        console.log(`[pauseAssessmentCloud] Assessment saved/updated: ${savedAssessmentId}`);
+        console.log(`[pauseAssessmentCloud] Assessment saved/updated: ${savedAssessment.id}`);
 
-        // --- 3. 准备 AssessmentDetail 对象数据 ---
-        console.log('[pauseAssessmentCloud] Step 3: Preparing AssessmentDetail objects...');
-        const questions = assessmentData.questions || [];
-        const answers = assessmentData.answers || {};
+        // --- 3. & 4. 保存 AssessmentDetail 对象 (逻辑同 submit) ---
+        console.log('[pauseAssessmentCloud] Step 3 & 4: Saving/Updating AssessmentDetail objects...');
+        // ... (查找或创建 Detail 的逻辑保持不变，确保 detail.set('assessmentPointer', savedAssessment)) ...
+        // ... (注意处理 startTime) ...
         const AssessmentDetail = AV.Object.extend('AssessmentDetail');
         const detailObjectsToSave = [];
         const existingDetailsMap = new Map();
-
-        // 如果是更新，先查询已有的 Detail 记录
-        if (assessment) {
-            // 确保在查询 Detail 时使用正确的 Assessment 对象 (应该是 assessment 而不是 savedAssessment)
-            // 因为 savedAssessment 是在之后才通过 assessment.save() 得到的
+         if (assessmentObjectId) { // 只有更新时才需要查旧的
             const detailQuery = new AV.Query('AssessmentDetail');
-            detailQuery.equalTo('assessmentPointer', assessment); // 使用 assessment
-            detailQuery.limit(1000); // Assume less than 1000 questions
+             detailQuery.equalTo('assessmentPointer', savedAssessment);
+             detailQuery.limit(1000);
             const existingDetails = await detailQuery.find({ useMasterKey: true });
             existingDetails.forEach(detail => {
-                // 使用 questionId 作为 key 来快速查找
                 const qId = detail.get('questionId');
-                if(qId) {
-                    existingDetailsMap.set(qId, detail);
-                }
+                 if (qId !== undefined) existingDetailsMap.set(qId, detail);
             });
-             console.log(`[pauseAssessmentCloud] Found ${existingDetailsMap.size} existing details for assessment ${savedAssessmentId}.`);
         }
+         const questions = assessmentData.questions || [];
+         const answers = assessmentData.answers || {};
+         // **** 新增日志 ****
+         console.log(`[pauseAssessmentCloud] assessmentData received. Questions count: ${questions.length}, Answers keys count: ${Object.keys(answers).length}`);
+         if (questions.length === 0) {
+             console.warn('[pauseAssessmentCloud] Warning: The questions array received from the frontend is empty. No details will be saved.');
+         }
 
         for (const question of questions) {
-            // 修正：确保 questionId 是 Number 类型，符合数据库定义
-            let questionIdAsNumber;
+             let questionIdNum;
             try {
-                // 尝试将前端传来的 question.id 转换为数字
-                // 前端 question.id 可能已经是数字，也可能是数字字符串
-                questionIdAsNumber = parseInt(question.id, 10); 
-                if (isNaN(questionIdAsNumber)) {
-                     console.warn(`[pauseAssessmentCloud] Invalid numeric format for question.id: ${question.id}. Skipping this detail.`);
-                     continue; // 跳过这个无效的题目详情
-                }
-            } catch (parseError) {
-                 console.warn(`[pauseAssessmentCloud] Error parsing question.id ${question.id} to number:`, parseError, ". Skipping this detail.");
-                 continue; // 跳过这个无法解析的题目详情
-            }
-
-            // 使用转换后的数字 ID 进行后续操作
-            let detailObject = existingDetailsMap.get(questionIdAsNumber); // 使用数字 ID 查找
-
+                 questionIdNum = parseInt(question.id, 10);
+                 if (isNaN(questionIdNum)) continue;
+             } catch (e) { continue; }
+             
+             let detailObject = existingDetailsMap.get(questionIdNum);
             if (!detailObject) {
-                // 如果找不到旧的，创建新的
                 detailObject = new AssessmentDetail();
-                detailObject.set('assessmentPointer', savedAssessment); // Link to the main assessment
-                detailObject.set('questionId', questionIdAsNumber); // **** 保存 Number 类型 ****
-            } else {
-                 console.log(`[pauseAssessmentCloud] Updating existing detail for questionId ${questionIdAsNumber}.`);
-            }
+                 detailObject.set('assessmentPointer', savedAssessment);
+                 detailObject.set('questionId', questionIdNum);
+             } // else { console.log(`Updating detail for qId ${questionIdNum}`); }
 
-            // 更新或设置 Detail 数据
-            detailObject.set('questionContent', question.content || '');
-            detailObject.set('standardScore', question.standardScore !== undefined ? question.standardScore : null);
-            // 修正：从 answer 对象中提取 score 属性值
-            const currentAnswer = answers[questionIdAsNumber]; // 获取当前问题的答案对象
-            detailObject.set('score', currentAnswer && currentAnswer.score !== undefined ? currentAnswer.score : null);
-            // 使用 currentAnswer 访问其他属性，更清晰
-            detailObject.set('comment', currentAnswer && currentAnswer.comment ? currentAnswer.comment : '');
-            detailObject.set('durationSeconds', Number(currentAnswer && currentAnswer.duration) || 0);
-            detailObject.set('startTime', currentAnswer && currentAnswer.startTime ? new Date(currentAnswer.startTime) : null);
-            detailObject.set('knowledgeSource', question.knowledgeSource || null);
-            detailObject.set('section', question.section || null);
-            detailObject.set('type', question.type || null);
-
+             detailObject.set('questionContent', question.content);
+             detailObject.set('standardScore', question.standardScore);
+             detailObject.set('section', question.section);
+             detailObject.set('type', question.type);
+             detailObject.set('knowledgeSource', question.knowledgeSource);
+             const answer = answers[questionIdNum];
+             detailObject.set('score', answer?.score ?? null);
+             detailObject.set('comment', answer?.comment ?? '');
+             detailObject.set('durationSeconds', Number(answer?.duration ?? 0));
+             // **** 保存 startTime ****
+             detailObject.set('startTime', answer && answer.startTime ? new Date(answer.startTime) : null);
             detailObjectsToSave.push(detailObject);
         }
-
-        // --- 4. 批量保存 AssessmentDetail 对象 ---
         if (detailObjectsToSave.length > 0) {
-            console.log(`[pauseAssessmentCloud] Step 4: Saving ${detailObjectsToSave.length} AssessmentDetail objects...`);
+            // **** 新增日志 ****
+            console.log(`[pauseAssessmentCloud] Attempting to save/update ${detailObjectsToSave.length} AssessmentDetail objects...`);
             await AV.Object.saveAll(detailObjectsToSave, { useMasterKey: true });
-            console.log(`[pauseAssessmentCloud] ${detailObjectsToSave.length} AssessmentDetails saved/updated.`);
+            // **** 新增日志 ****
+            console.log(`[pauseAssessmentCloud] Successfully saved/updated ${detailObjectsToSave.length} AssessmentDetails.`);
         } else {
-            console.log('[pauseAssessmentCloud] Step 4: No AssessmentDetail objects to save.');
+            // **** 修改日志 ****
+            console.log(`[pauseAssessmentCloud] No AssessmentDetail objects were prepared to save/update.`);
         }
 
-        console.log(`[pauseAssessmentCloud] Assessment pause processing completed for frontendId: ${assessmentId}, cloud ObjectId: ${savedAssessmentId}.`);
-        return savedAssessmentId; // 返回 Assessment 的 objectId
+        console.log(`[pauseAssessmentCloud] Processing completed for assessment: ${savedAssessment.id}.`);
+        // **** 返回 objectId ****
+        return savedAssessment.id;
 
     } catch (error) {
-        console.error(`[pauseAssessmentCloud] Error processing pause for assessment frontendId ${assessmentId}:`, error);
-        throw new AV.Cloud.Error(error.message || '保存暂停状态时发生未知错误。', {
-            code: error.code || 500,
-            details: error.stack
+        console.error(`[pauseAssessmentCloud] Error processing pause (objectId: ${assessmentObjectId}):`, error);
+        // 保持之前的错误抛出逻辑
+        const cloudError = new AV.Cloud.Error(error.message || '保存暂停状态时发生未知错误。', {
+            code: error.code || (error instanceof AV.Cloud.Error ? 400 : 500)
         });
+        if (error.stack) cloudError.details = { stack: error.stack };
+        throw cloudError;
     }
 });
 

@@ -91,6 +91,15 @@
                         <span class="station-label">题库管理</span>
                     </a>
                 </li>
+                <!-- **** MODIFIED: User Auth Station **** -->
+                <li class="line"></li>
+                <li class="station user-auth-station" style="margin-left: auto;"> <!-- Keep push right -->
+                    <a href="#" id="authLink" class="station-link" title="用户状态"> <!-- Link for interaction -->
+                        <span class="station-icon" id="authIconContainer"><i id="authIcon" class="bi bi-person-circle"></i></span> <!-- User icon -->
+                        <span class="station-label" id="authLabel">登录</span> <!-- Label: Default '登录' -->
+                    </a>
+                </li>
+                <!-- **** END MODIFIED **** -->
             </ul>
         </nav>
         
@@ -176,9 +185,6 @@
             <div class="d-grid gap-2 d-md-flex justify-content-md-end mt-4 mb-3">
                 <!-- 刷新云端记录按钮 -->
                 <button id="refreshCloudBtn" class="btn btn-primary btn-sm"><i class="bi bi-arrow-clockwise me-1"></i> 刷新云端记录</button>
-                <!-- 导出列表按钮 -->
-                <button type="button" class="btn btn-outline-success btn-sm" id="exportListBtn" onclick="exportHistoryList()">
-                     <i class="bi bi-file-earmark-spreadsheet me-1"></i> 导出当前列表</button>
                 <!-- 导出全部历史记录按钮 -->
                 <button id="exportHistoryBtn" class="btn btn-success btn-sm"><i class="bi bi-download me-1"></i> 导出全部记录(Excel)</button>
                 <!-- (可选) 添加一个用于处理本地未同步记录的按钮 -->

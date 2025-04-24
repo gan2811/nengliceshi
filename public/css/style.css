@@ -892,6 +892,35 @@ body::before {
     font-weight: bold;
 }
 
+/* **** 新增: 调整导航栏中的登录/登出按钮样式 **** */
+/*
+.page-navigation-metro li.user-station {
+    display: flex; 
+    align-items: center; 
+}
+
+.page-navigation-metro #authButton {
+    background-color: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: white;
+    padding: 0.25rem 0.75rem; 
+    font-size: 0.875rem; 
+    line-height: 1.5; 
+}
+
+.page-navigation-metro #authButton:hover {
+    background-color: #5e37a6; 
+    border-color: #56319b;
+    color: white;
+}
+
+.page-navigation-metro #loggedInUsername {
+     vertical-align: middle; 
+     font-size: 0.9rem; 
+     color: #e9ecef; 
+}
+*/
+
 /* Responsive adjustments for Metro Nav */
 @media (max-width: 768px) {
     .page-navigation-metro ul {

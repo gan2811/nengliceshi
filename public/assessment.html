@@ -254,6 +254,15 @@
                             <span class="station-label">题库管理</span>
                         </a>
                     </li>
+                    <!-- **** ADDED: User Status and Auth Button **** -->
+                    <li class="line"></li>
+                    <li class="station user-auth-station" style="margin-left: auto;"> <!-- Keep push right -->
+                        <a href="#" id="authLink" class="station-link" title="用户状态"> <!-- Link for interaction -->
+                            <span class="station-icon" id="authIconContainer"><i id="authIcon" class="bi bi-person-circle"></i></span> <!-- User icon -->
+                            <span class="station-label" id="authLabel">登录</span> <!-- Label: Default '登录' -->
+                        </a>
+                    </li>
+                    <!-- **** END ADDED **** -->
                 </ul>
             </nav>
             
@@ -413,6 +422,36 @@
             </div>
         </div>
     </div>
+
+    <!-- **** ADDED: Login Modal **** -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">请登录</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger d-none" role="alert" id="loginErrorAlert">
+                        登录失败信息
+                    </div>
+                    <div class="mb-3">
+                        <label for="loginUsername" class="form-label">用户名</label>
+                        <input type="text" class="form-control" id="loginUsername" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="loginPassword" class="form-label">密码</label>
+                        <input type="password" class="form-control" id="loginPassword" required>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                    <button type="button" class="btn btn-primary" id="loginSubmitButton">登录</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- **** END ADDED **** -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script> 
