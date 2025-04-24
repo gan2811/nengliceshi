@@ -36,35 +36,78 @@ document.addEventListener('DOMContentLoaded', function() {
     // 检查是否有正在进行的测评
     const savedAssessment = localStorage.getItem('currentAssessment');
     if (savedAssessment) {
-        currentAssessmentData = JSON.parse(savedAssessment);
-        currentQuestions = currentAssessmentData.questions;
-        currentQuestionIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
-        userAnswers = currentAssessmentData.answers;
-        // **** 确保加载累计的活动时间 ****
-        currentAssessmentData.totalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0; // 确保该字段存在并初始化
+        try { // **** 添加 try...catch 包裹 JSON 解析和恢复逻辑 ****
+            currentAssessmentData = JSON.parse(savedAssessment);
+            
+            // **** 健壮性检查：确保核心数据存在 ****
+            if (!currentAssessmentData || !currentAssessmentData.questions || !currentAssessmentData.answers) {
+                console.error("[Resume] Invalid or incomplete saved assessment data.", currentAssessmentData);
+                localStorage.removeItem('currentAssessment'); // 清除无效数据
+                throw new Error("Saved assessment data is invalid."); // 抛出错误，阻止后续恢复
+            }
+
+            currentQuestions = currentAssessmentData.questions;
+            userAnswers = currentAssessmentData.answers;
+            let loadedIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
+
+            // **** 关键：验证加载的索引 ****
+            if (loadedIndex < 0 || loadedIndex >= currentQuestions.length) {
+                console.warn(`[Resume] Invalid saved currentQuestionIndex (${loadedIndex}) for ${currentQuestions.length} questions. Resetting to 0.`);
+                loadedIndex = 0; // 如果索引无效，重置为 0
+                // 可选：也可以重置为最后一题 currentQuestions.length - 1
+            }
+            currentQuestionIndex = loadedIndex; // 使用验证或重置后的索引
+            
+            // **** 确保加载累计的活动时间 ****
+            currentAssessmentData.totalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0; // 确保该字段存在并初始化
+            
+            // **** 调用 displayUserInfo 显示信息 ****
+            if(currentAssessmentData.userInfo) { // 检查 userInfo 是否存在
+               displayUserInfo(currentAssessmentData.userInfo);
+            } else {
+                console.warn("[Resume] userInfo not found in saved data.");
+                // 可以考虑根据 employeeId 等信息重新获取
+            }
+
+            // 隐藏信息表单，显示测评区域
+            const userInfoForm = document.getElementById('userInfoForm'); // 假设 setup 页面的 ID
+            const assessmentArea = document.getElementById('assessmentArea'); // 假设测评界面的 ID
+            if (userInfoForm) userInfoForm.classList.add('d-none');
+            if (assessmentArea) assessmentArea.classList.remove('d-none');
+            
+            // 恢复计时器状态 (显示总流逝时间)
+            if (currentAssessmentData.startTime) { // 检查 startTime 是否存在
+                const assessmentStartTime = new Date(currentAssessmentData.startTime);
+                const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0; // 这是总流逝时间
+                startTimer(assessmentStartTime, elapsedSeconds); 
+            } else {
+                 console.warn("[Resume] startTime not found in saved data. Cannot resume timer accurately.");
+                 // 可以考虑启动一个新计时器，或者不启动
+            }
+
+            // 生成导航并显示当前题目
+            generateQuestionNavigation(); // Generate buttons first
+            showQuestion(currentQuestionIndex); // Then show the correct question
+            updateProgressAndStatus(); // Update counts
+            updateSubmitButton(); // Update submit button state
         
-        // **** 调用 displayUserInfo 显示信息 ****
-        displayUserInfo(currentAssessmentData.userInfo);
+        } catch (error) {
+            console.error("[Resume] Error resuming assessment from localStorage:", error);
+            // 如果恢复出错，清除可能损坏的数据并显示设置界面
+            localStorage.removeItem('currentAssessment');
+            const userInfoForm = document.getElementById('userInfoForm');
+            const assessmentArea = document.getElementById('assessmentArea');
+            if (userInfoForm) userInfoForm.classList.remove('d-none');
+            if (assessmentArea) assessmentArea.classList.add('d-none');
+            alert("恢复之前的测评进度时出错，请重新开始。");
+        }
 
-        // 隐藏信息表单，显示测评区域
-        document.getElementById('userInfoForm').classList.add('d-none');
-        document.getElementById('assessmentArea').classList.remove('d-none');
-
-        // 恢复计时器状态 (显示总流逝时间)
-        const assessmentStartTime = new Date(currentAssessmentData.startTime);
-        const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0; // 这是总流逝时间
-        startTimer(assessmentStartTime, elapsedSeconds); 
-
-        // 生成导航并显示当前题目
-        generateQuestionNavigation(); // Generate buttons first
-        showQuestion(currentQuestionIndex); // Then show the correct question
-        updateProgressAndStatus(); // Update counts
-        updateSubmitButton(); // Update submit button state
-        
     } else {
         // 没有正在进行的测评，显示信息表单
-        document.getElementById('userInfoForm').classList.remove('d-none');
-        document.getElementById('assessmentArea').classList.add('d-none');
+        const userInfoForm = document.getElementById('userInfoForm');
+        const assessmentArea = document.getElementById('assessmentArea');
+         if (userInfoForm) userInfoForm.classList.remove('d-none');
+         if (assessmentArea) assessmentArea.classList.add('d-none');
     }
 });
 
@@ -432,122 +475,133 @@ function displayUserInfo(userData) {
 
 // 开始测评
 function startAssessment() {
-    // **** 添加日志 ****
-    // console.log("[startAssessment] Function called.");
+    console.log("[startAssessment] 函数开始");
+    const totalQuestionsInput = document.getElementById('totalQuestionsToAsk'); 
+    
+    // **** 确保 try 关键字在函数体内部，包裹主要逻辑 ****
+    try { 
+        const name = document.getElementById('name').value;
+        const employeeId = document.getElementById('employeeId').value;
+        const positionSelect = document.getElementById('position');
+        const stationSelect = document.getElementById('station');
+        const positionCode = positionSelect.value;
+        const positionName = positionSelect.options[positionSelect.selectedIndex]?.text || '';
+        const stationCode = stationSelect.value;
+        const stationName = stationSelect.options[stationSelect.selectedIndex]?.text || '';
+        
+        // **** 修正 selectedSections 获取方式，使用 data-section 属性 ****
+        const selectedSectionsMap = new Map(); // 使用 Map 存储选中的 section 和数量
+        document.querySelectorAll('.section-count-input').forEach(input => {
+             const section = input.dataset.section;
+             const count = parseInt(input.value, 10) || 0;
+             if (count > 0) {
+                 selectedSectionsMap.set(section, count);
+             }
+        });
 
-    const name = document.getElementById('name').value;
-    const employeeId = document.getElementById('employeeId').value;
-    const station = document.getElementById('station').value;
-    const position = document.getElementById('position').value;
-
-    if (!name || !employeeId || !station || !position) {
-        alert('请填写完整的姓名、工号、车站和岗位信息');
-        return;
-    }
-
-    const userInfo = {
-        name: name,
-        employeeId: employeeId,
-        station: station, // Assuming you want to store the selected station text
-        position: position, // Store the position code
-        positionName: document.getElementById('position').selectedOptions[0]?.text || position // Store position name
-    };
-
-    // 获取该岗位所有题目
-    const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
-    const positionQuestions = questionBank.filter(q => 
-        q.position && (Array.isArray(q.position) ? q.position.includes(position) : q.position === position || q.position.includes('all'))
-    );
-
-    // **** 添加日志 ****
-    // console.log(`[startAssessment] Found ${positionQuestions.length} questions for position '${position}'.`);
-
-    // 1. 筛选出所有必答题
-    const requiredQuestions = positionQuestions.filter(q => q.type === 'required');
-
-    // 2. 根据 selectedSections 从各模块随机抽取选答题
-    let randomSelectedQuestions = [];
-    selectedSections.forEach((count, section) => {
-        if (count > 0) {
-            // 筛选出该模块的选答题
-            const sectionRandomQuestions = positionQuestions.filter(q => q.section === section && q.type === 'random');
-            // 随机抽取指定数量
-            const randomQuestions = getRandomQuestions(sectionRandomQuestions, count);
-            randomSelectedQuestions.push(...randomQuestions);
+        currentEmployeeId = employeeId;
+        currentEmployeeName = name;
+        currentPositionCode = positionCode;
+        currentPositionName = positionName;
+        currentStationCode = stationCode;
+        currentStationName = stationName;
+        
+        // **** 使用 selectedSectionsMap 的大小判断是否有选择 ****
+        if (!currentEmployeeId || !currentEmployeeName || !currentPositionCode || !currentStationCode /* || selectedSectionsMap.size === 0 */ ) { // 先不强制必须选模块
+            alert('请确保姓名、工号、岗位、站点都已选择。');
+            return;
         }
-    });
 
-    // 3. 合并必答题和选答题
-    const finalSelectedQuestions = [...requiredQuestions, ...randomSelectedQuestions];
-    
-    // **** 添加日志 ****
-    // console.log(`[startAssessment] Total required: ${requiredQuestions.length}, Total random selected: ${randomSelectedQuestions.length}, Final selected: ${finalSelectedQuestions.length}`);
-    
-    // 如果最终没有题目（例如只有选答题模块但用户没选），则提示
-    if (finalSelectedQuestions.length === 0) {
-        alert('没有选中任何题目，请确认岗位设置或模块选择。');
-        return;
-    }
+        // 确保 allQuestionsData 已加载 (这里假设它已在别处加载)
+        if (!allQuestionsData || Object.keys(allQuestionsData).length === 0) {
+            console.error("[startAssessment] 题目数据 (allQuestionsData) 未加载。");
+            alert("错误：无法加载题目数据，请刷新页面或联系管理员。");
+            return;
+        }
+        
+        // **** 修正：根据 selectedSectionsMap 确定哪些模块被选中，并获取题目 ****
+        let allSelectedQuestions = [];
+        const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]'); // 假设从 localStorage 获取
+        
+        // 1. 获取所有必答题
+        const requiredQuestions = questionBank.filter(q => 
+             q.position && (Array.isArray(q.position) ? q.position.includes(positionCode) : q.position === positionCode || q.position.includes('all')) &&
+             q.type === 'required'
+        );
+        allSelectedQuestions = allSelectedQuestions.concat(requiredQuestions);
+        console.log(`[startAssessment] Found ${requiredQuestions.length} required questions.`);
 
-    const assessmentStartTime = new Date(); // 测评总开始时间
+        // 2. 根据 selectedSectionsMap 获取选答题
+        selectedSectionsMap.forEach((count, section) => {
+            const sectionRandomQuestions = questionBank.filter(q =>
+                q.position && (Array.isArray(q.position) ? q.position.includes(positionCode) : q.position === positionCode || q.position.includes('all')) &&
+                q.section === section &&
+                q.type === 'random'
+            );
+            const randomSubset = getRandomQuestions(sectionRandomQuestions, count); // 使用之前的 getRandomQuestions
+            allSelectedQuestions = allSelectedQuestions.concat(randomSubset);
+            console.log(`[startAssessment] Selected ${randomSubset.length} random questions from section '${section}'.`);
+        });
 
-    // 保存测评信息
-    currentAssessmentData = {
-        id: Date.now(),
-        userInfo: userInfo,
-        position: position, // Keep position code here for filtering
-        questions: finalSelectedQuestions.map(q => ({ // 只存储题目核心信息，减少冗余
-            id: q.id,
-            content: q.content,
-            standardScore: q.standardScore,
-            standardAnswer: q.standardAnswer, // 保留标准答案用于结果页对比
-            section: q.section,
-            type: q.type,
-            knowledgeSource: q.knowledgeSource // <-- 添加这一行
-        })),
-        answers: {}, // 初始化为空对象
-        startTime: assessmentStartTime.toISOString(), // 总开始时间
-        status: 'in_progress',
-        totalActiveSeconds: 0 // **** 初始化活动时间 ****
-    };
+        if (allSelectedQuestions.length === 0) {
+             console.error("[startAssessment] 最终选出的题目列表为空。");
+             alert("错误：未能根据您的选择组合出题目列表，请检查配置或选择。");
+             return;
+        }
 
-    // 初始化答案对象，并设置第一题的开始时间
-    currentAssessmentData.questions.forEach((q, index) => {
-        currentAssessmentData.answers[q.id] = {
-            score: null,
-            comment: '',
-            startTime: index === 0 ? assessmentStartTime.toISOString() : null, // 只有第一题立即记录开始时间
-            duration: 0 // 初始化用时为0
+        // **** 不再需要从 totalQuestionsInput 读取，总数由必答+选答决定 ****
+        currentQuestions = allSelectedQuestions; 
+        console.log(`[startAssessment] Final total questions: ${currentQuestions.length}`);
+        
+        userAnswers = {};
+        currentQuestions.forEach(question => {
+            userAnswers[question.id] = {
+                score: null,
+                comment: '',
+                startTime: null,
+                duration: 0
+            };
+        });
+        currentAssessmentData = {
+            assessmentId: generateFrontendId(), 
+            employeeId: currentEmployeeId, 
+            employeeName: currentEmployeeName, 
+            positionCode: currentPositionCode, 
+            positionName: currentPositionName,
+            stationCode: currentStationCode, 
+            stationName: currentStationName,
+            assessmentDate: new Date().toISOString(), 
+            status: '进行中',
+            questions: currentQuestions.map(q => ({ 
+                id: q.id, 
+                standardScore: q.standardScore,
+                content: q.content, 
+                section: q.section, // 添加 section
+                type: q.type // 添加 type
+            })),
+            answers: userAnswers, 
+            totalScore: null,
+            scoreRate: null,
+            totalActiveSeconds: 0, 
+            assessor: null
         };
-    });
-    
-    currentQuestions = currentAssessmentData.questions;
-    userAnswers = currentAssessmentData.answers; // 引用
-    currentQuestionIndex = 0; // 从第一题开始
+        console.log(`[startAssessment] Questions loaded. count=${currentQuestions?.length}, currentAssessmentData initialized.`);
+        currentQuestionIndex = 0; 
+        console.log(`[startAssessment] Initial currentQuestionIndex set to: ${currentQuestionIndex}`);
+        document.getElementById('assessmentSetup').style.display = 'none';
+        document.getElementById('assessmentInterface').style.display = 'block';
+        generateQuestionNavigation();
+        displayCurrentQuestion(); 
+        currentSessionStartTime = new Date();
+        startTimer(currentSessionStartTime); 
+        console.log("[startAssessment] 函数结束，测评界面已显示");
 
-    localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData)); // 保存初始状态
-    
-    // **** 添加日志 ****
-    // console.log("[startAssessment] Hiding user info form, showing assessment area.");
-    // 显示测评区域
-    document.getElementById('userInfoForm').classList.add('d-none');
-    document.getElementById('assessmentArea').classList.remove('d-none');
-    document.getElementById('timer').textContent = '00:00'; // 重置计时器显示
-
-    // **** 新增：更新总题数并生成导航按钮 ****
-    document.getElementById('totalQuestions').textContent = currentQuestions.length;
-    generateQuestionNavigation(); 
-
-    // 开始计时器
-    startTimer(assessmentStartTime); // 首次开始，从0开始计时
-
-    // **** 调用 displayUserInfo 显示信息 ****
-    displayUserInfo(currentAssessmentData.userInfo);
-
-    // **** 添加日志 ****
-    // console.log("[startAssessment] Calling displayCurrentQuestion for the first time.");
-    // 显示第一题
-    displayCurrentQuestion(); 
+    } catch (error) { 
+        console.error("[startAssessment] 开始测评时发生错误:", error);
+        alert(`开始测评失败: ${error.message}`); 
+        document.getElementById('assessmentSetup').style.display = 'block';
+        document.getElementById('assessmentInterface').style.display = 'none';
+    }
 }
 
 // 获取随机题目
@@ -660,8 +714,23 @@ function checkAllAnswered() {
 
 // **** 修改保存逻辑：允许切换题目，即使未评分 ****
 function saveCurrentAnswer(isNavigating = false) { // Added isNavigating flag
+    console.log(`[saveCurrentAnswer] Called. isNavigating=${isNavigating}, currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // 添加日志
+    
+    // **** 添加健壮性检查 ****
+    if (!currentQuestions || currentQuestions.length === 0) {
+        console.error("[saveCurrentAnswer] Error: currentQuestions is empty or not loaded.");
+        // 可以考虑是否需要 alert 或其他错误处理
+        return; // 提前退出，防止后续错误
+    }
+    if (currentQuestionIndex < 0 || currentQuestionIndex >= currentQuestions.length) {
+        console.error(`[saveCurrentAnswer] Error: Invalid currentQuestionIndex: ${currentQuestionIndex}. Max index is ${currentQuestions.length - 1}`);
+        // 同样，考虑错误处理
+        return; // 提前退出
+    }
+    // **** 检查结束 ****
+
     const scoreInput = document.getElementById('scoreInput');
-    const commentInput = document.getElementById('commentInput');
+    console.log(`[saveCurrentAnswer] Accessing currentQuestions[${currentQuestionIndex}] before getting id.`); // 在访问前打印
     const questionId = currentQuestions[currentQuestionIndex].id;
     const score = scoreInput.value !== '' ? parseFloat(scoreInput.value) : null; // Keep score as null if empty
     const comment = commentInput.value;
@@ -702,8 +771,10 @@ function saveCurrentAnswer(isNavigating = false) { // Added isNavigating flag
 
 // 记录上一题的用时 (在切换或提交时调用)
 function recordPreviousQuestionTime() {
+     console.log(`[recordPreviousQuestionTime] Called. currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
      // Check if we came from a valid index
      if (currentQuestionIndex >= 0 && currentQuestionIndex < currentQuestions.length) {
+         console.log(`[recordPreviousQuestionTime] Accessing currentQuestions[${currentQuestionIndex}]`); // 添加日志
          const previousQuestionId = currentQuestions[currentQuestionIndex].id;
          const answer = userAnswers[previousQuestionId];
          if (answer && answer.startTime) {
@@ -718,6 +789,7 @@ function recordPreviousQuestionTime() {
 
 // 显示下一题
 function showNextQuestion() {
+    console.log(`[showNextQuestion] Called. Before increment: currentQuestionIndex=${currentQuestionIndex}, totalQuestions=${currentQuestions?.length}`); // 添加日志
     if (currentQuestionIndex < currentQuestions.length - 1) {
         // **先保存当前题目答案 (允许未评分)**
         saveCurrentAnswer(true); 
@@ -726,12 +798,16 @@ function showNextQuestion() {
         
         // 切换到下一题
         currentQuestionIndex++;
+        console.log(`[showNextQuestion] After increment: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
         displayCurrentQuestion();
+    } else {
+        console.log("[showNextQuestion] Already at the last question."); // 添加日志
     }
 }
 
 // 显示上一题
 function showPreviousQuestion() {
+    console.log(`[showPreviousQuestion] Called. Before decrement: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
     if (currentQuestionIndex > 0) {
          // **先保存当前题目答案 (允许未评分)**
          saveCurrentAnswer(true);
@@ -740,7 +816,10 @@ function showPreviousQuestion() {
         
         // 切换到上一题
         currentQuestionIndex--;
+        console.log(`[showPreviousQuestion] After decrement: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
         displayCurrentQuestion();
+    } else {
+         console.log("[showPreviousQuestion] Already at the first question."); // 添加日志
     }
 }
 
@@ -995,6 +1074,7 @@ async function submitAssessment() {
 
 // **** 修改：暂存测评 (增加云端同步) ****
 async function pauseAssessment() { // <-- Make the function async
+    console.log(`[pauseAssessment] Function start. currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // 添加日志
     // 0. 禁用按钮，显示加载状态
     const pauseBtn = document.getElementById('pauseBtn');
     if (pauseBtn) {
@@ -1014,6 +1094,7 @@ async function pauseAssessment() { // <-- Make the function async
     }
     
     // **** 保存最后一次答案和时间 ****
+    console.log(`[pauseAssessment] Calling saveCurrentAnswer(true). currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
     saveCurrentAnswer(true); // Save current state before pausing (isNavigating=true to skip validation if needed)
     recordPreviousQuestionTime(); // Record time for the question before the current one
 
@@ -1200,20 +1281,26 @@ function generateQuestionNavigation() {
 
 // 添加新函数：显示指定题目 (逻辑不变)
 function showQuestion(index) {
+    console.log(`[showQuestion] Called with index=${index}. currentQuestionIndex was ${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // 添加日志
+    // 验证 index 的有效性
+    console.log(`[showQuestion] Validating index ${index} against length ${currentQuestions?.length}`); // 添加日志
     if (index < 0 || index >= currentQuestions.length) {
-        console.error("Invalid question index:", index);
+        console.error(`[showQuestion] 无效的题目索引: ${index} (总题目数: ${currentQuestions.length})`); // 添加错误日志
+        alert(`内部错误：无效的题目索引 ${index}。`); // 可以给用户更友好的提示
         return;
     }
-
+    // 更新当前题目索引
     currentQuestionIndex = index;
+    console.log(`[showQuestion] currentQuestionIndex updated to: ${currentQuestionIndex}`); // 添加日志
     displayCurrentQuestion();
+    console.log(`[showQuestion] Successfully switched to question index ${currentQuestionIndex}`); // 添加日志
 }
 
 // **** 新增：在页面隐藏/离开时自动保存进行中的测评状态 ****
 window.addEventListener('pagehide', function(event) {
     // 检查是否有正在进行的测评数据，并且状态是 'in_progress'
     if (currentAssessmentData && currentAssessmentData.status === 'in_progress') {
-        console.log('[pagehide] Detected active assessment. Saving state...');
+        console.log('[pagehide] Detected active assessment. Preparing to save state...');
 
         // 1. 保存当前题目的答案和评论 (允许未评分)
         saveCurrentAnswer(true); 
@@ -1221,18 +1308,16 @@ window.addEventListener('pagehide', function(event) {
         recordPreviousQuestionTime(); 
 
         // 3. 更新 currentAssessmentData 中的关键状态
-        currentAssessmentData.currentQuestionIndex = currentQuestionIndex;
+        // **** 重要：确保这里使用的是当前的全局 currentQuestionIndex ****
+        currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
 
         // 4. 计算并更新时间
-        // 停止计时器以获取当前会话时间 (如果正在运行)
+        // ... (时间计算逻辑保持不变) ...
         let currentSessionDurationSeconds = 0;
         if (currentSessionStartTime) {
             currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
         }
-        // 累加总活动时间
         currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
-
-        // 计算总流逝时间 (从开始到此刻)
         let elapsedSeconds = 0;
         if (currentAssessmentData.startTime) {
             const startTime = new Date(currentAssessmentData.startTime);
@@ -1243,6 +1328,15 @@ window.addEventListener('pagehide', function(event) {
 
         // 5. 将更新后的数据保存到 localStorage
         try {
+            // **** 添加详细日志：在保存前打印关键状态 ****
+            console.log(`[pagehide] --- Saving State ---`);
+            console.log(`[pagehide] currentQuestionIndex to be saved: ${currentAssessmentData.currentQuestionIndex}`);
+            // 确保 currentAssessmentData.questions 存在再访问 length
+            const questionsLength = currentAssessmentData.questions ? currentAssessmentData.questions.length : 'undefined';
+            console.log(`[pagehide] currentQuestions.length to be saved: ${questionsLength}`);
+            // 可以选择性打印整个对象，但可能很大
+            // console.log('[pagehide] Full data being saved:', JSON.stringify(currentAssessmentData)); 
+            
             localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData));
             console.log('[pagehide] Assessment state saved to localStorage.');
         } catch (e) {
