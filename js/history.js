@@ -150,6 +150,9 @@ async function loadHistoryFromCloud(page = 1) {
 async function buildAssessmentQuery() {
     const query = new AV.Query('Assessment');
     query.include('userPointer');
+    // **** 新增：包含 UserProfile 关联的岗位和站点指针 ****
+    query.include('userPointer.positionPointer');
+    query.include('userPointer.stationPointer');
 
     // --- 应用筛选条件 ---
     if (currentFilters.startDate) {
@@ -290,16 +293,22 @@ async function syncAllFilteredCloudDataToLocal() {
                  const userInfo = record.get('userPointer');
                  const details = detailsByAssessmentId[record.id] || [];
 
+                 // **** 修改：正确获取 station 和 position 信息 ****
+                 const stationPointer = userInfo ? userInfo.get('stationPointer') : null;
+                 const positionPointer = userInfo ? userInfo.get('positionPointer') : null;
+                 const stationName = stationPointer ? stationPointer.get('stationName') : '未知';
+                 const positionName = positionPointer ? positionPointer.get('positionName') : '未知';
+
                  const localRecord = {
                      id: record.id,
                      userInfo: userInfo ? {
                          name: userInfo.get('name'),
                          employeeId: userInfo.get('employeeId'),
-                         station: userInfo.get('stationCode'),
-                         position: record.get('positionCode'),
-                         positionName: getPositionName(record.get('positionCode')),
+                         station: stationName,
+                         position: positionName,
+                         positionName: positionName
                      } : {},
-                     position: record.get('positionCode'),
+                     position: positionName,
                      assessor: record.get('assessorName'),
                      timestamp: record.get('endTime')?.toISOString(),
                      startTime: record.get('startTime')?.toISOString(),
@@ -396,7 +405,17 @@ function populateTable(records) {
         const userInfo = record.get('userPointer');
         const name = userInfo ? userInfo.get('name') : 'N/A';
         const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
-        const position = getPositionName(record.get('positionCode'));
+        // **** 修改：通过指针链获取岗位名称 ****
+        const positionPointer = userInfo ? userInfo.get('positionPointer') : null;
+        // **** 新增日志 ****
+        if (!positionPointer) {
+            console.log(`[populateTable] Record ID: ${record.id} - UserProfile (ID: ${userInfo?.id}) has NO positionPointer.`);
+        } else {
+            console.log(`[populateTable] Record ID: ${record.id} - UserProfile (ID: ${userInfo?.id}) has positionPointer pointing to Position ID: ${positionPointer.id}`);
+        }
+        const position = positionPointer ? positionPointer.get('positionName') : '未知';
+        // **** 新增日志 ****
+        console.log(`[populateTable] Record ID: ${record.id} - Final position value: ${position}`);
         const recordStatus = record.get('status'); // 获取状态
         const isPaused = recordStatus === 'paused';
         const isFailed = recordStatus === 'failed_to_submit';
@@ -525,6 +544,9 @@ async function viewDetail(assessmentId) {
         // 直接从云端查询，不依赖 currentCloudAssessment 或内存中的数据
         const query = new AV.Query('Assessment');
         query.include('userPointer');
+        // **** 新增：包含 UserProfile 关联的指针 ****
+        query.include('userPointer.positionPointer');
+        query.include('userPointer.stationPointer');
         const assessment = await query.get(assessmentId);
 
         // 查询关联的 AssessmentDetail
@@ -557,8 +579,11 @@ function buildDetailHtml(assessment, details) {
     const userInfo = assessment.get('userPointer');
     const name = userInfo ? userInfo.get('name') : 'N/A';
     const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
-    const station = userInfo ? getStationName(userInfo.get('stationCode')) : 'N/A';
-    const position = getPositionName(assessment.get('positionCode'));
+    // **** 修改：通过指针链获取站点和岗位名称 ****
+    const stationPointer = userInfo ? userInfo.get('stationPointer') : null;
+    const station = stationPointer ? stationPointer.get('stationName') : '未知';
+    const positionPointer = userInfo ? userInfo.get('positionPointer') : null;
+    const position = positionPointer ? positionPointer.get('positionName') : '未知';
     const assessor = assessment.get('assessorName') || 'N/A';
     const endTime = formatDate(assessment.get('endTime'), true);
     const startTime = formatDate(assessment.get('startTime'), true);
@@ -949,134 +974,61 @@ if (exportFullBtn) {
     exportFullBtn.onclick = exportFullHistoryToExcel;
 }
 
-// **** 修改：继续测评功能 (从云端恢复) ****
+// **** 修改：恢复测评，增加本地状态检查 ****
 async function resumeAssessment(assessmentId) {
-     console.log(`[resumeAssessment] Attempting to resume assessment from cloud ID: ${assessmentId}`);
-     const resumeButton = event.target; // Get the button that was clicked
-     if (resumeButton) resumeButton.disabled = true; // Disable button temporarily
+    console.log(`Attempting to resume assessment with ID: ${assessmentId}`);
 
-     // Check for existing in-progress assessment
-     if (localStorage.getItem('currentAssessment')) {
-         try {
-             const currentData = JSON.parse(localStorage.getItem('currentAssessment'));
-             // Allow overwrite only if the current one is NOT the one we are resuming, AND it's in progress
-             if (currentData.id !== assessmentId && currentData.status === 'in_progress') {
-                  if (!confirm("当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？")) {
-                      if (resumeButton) resumeButton.disabled = false; // Re-enable button
-                      return; // User cancelled
-                  }
-             }
-             // Allow overwriting if the current one is completed or failed
-             else if (currentData.status === 'completed' || currentData.status === 'failed_to_submit') {
-                // Allow overwrite without confirmation
-             }
-             // Allow overwrite if the current one IS the one we are resuming (e.g., user refreshed history page)
-             else if (currentData.id === assessmentId) {
-                 // Allow overwrite without confirmation
-             }
+    // 1. 检查本地是否存在不相关的进行中测评
+    const localStateKey = 'activeAssessmentState'; // 使用与 assessment.js 统一的键名
+    let localState = null;
+    try {
+        const storedState = localStorage.getItem(localStateKey);
+        if (storedState) {
+            localState = JSON.parse(storedState);
+            console.log("Found local assessment state:", localState);
+        }
+    } catch (e) {
+        console.error("Error reading local assessment state:", e);
+        // 出错时，为安全起见，可以当作存在冲突，或者忽略本地状态
+        // 这里选择忽略本地状态错误，允许继续恢复
+        localState = null; 
+    }
 
-         } catch (e) {
-             console.warn("Error parsing currentAssessment, proceeding with resume.", e);
-             // If parsing fails, assume it's safe to overwrite
-         }
-     }
+    let proceedToResume = true; // 默认允许恢复
 
-     try {
-         // 1. Fetch Assessment from cloud
-         const query = new AV.Query('Assessment');
-         query.include('userPointer');
-         const assessmentRecord = await query.get(assessmentId);
+    // 检查是否存在冲突的本地状态 (状态为 '进行中' 或 'paused' 且 ID 不同)
+    if (localState && 
+        (localState.status === '进行中' || localState.status === 'paused') && // 检查状态
+        localState.objectId !== assessmentId && // 确保 ID 不同
+        localState.assessmentId !== assessmentId) { // 同时也检查前端生成的 ID
+        
+        console.warn(`Conflict: Found an unrelated active/paused assessment in local storage (ID: ${localState.assessmentId || localState.objectId}).`);
+        
+        // 弹出确认对话框 (使用您截图中的文本)
+        proceedToResume = confirm(
+            '当前已有正在进行的测评。继续将覆盖当前进度，确定要继续吗？'
+        );
 
-         if (!assessmentRecord || assessmentRecord.get('status') !== 'paused') {
-             alert("无法继续测评：未找到对应的暂停记录或记录状态不正确。请刷新列表重试。");
-             loadHistoryFromCloud(currentPage); // Refresh list
-             if (resumeButton) resumeButton.disabled = false;
-             return;
-         }
+        if (proceedToResume) {
+            console.log("User confirmed overwrite. Clearing local state before resuming.");
+            // 用户确认覆盖，清除本地状态
+            localStorage.removeItem(localStateKey);
+        } else {
+            console.log("User cancelled overwrite. Aborting resume.");
+        }
+    }
 
-         // 2. Fetch related AssessmentDetails
-         const detailQuery = new AV.Query('AssessmentDetail');
-         detailQuery.equalTo('assessmentPointer', assessmentRecord);
-         detailQuery.limit(1000);
-         const details = await detailQuery.find();
-
-         // **** 新增：加载本地题库 ****
-         let questionBank = [];
-         try {
-             questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
-         } catch (e) {
-             console.error("[resumeAssessment] Error loading question bank from localStorage:", e);
-             // 如果题库加载失败，后续标准答案会是 undefined
-         }
-         // **** 结束加载 ****
-
-         // 3. Build the structure needed by assessment.js
-         const userInfo = assessmentRecord.get('userPointer');
-         const assessmentToResume = {
-              id: String(assessmentRecord.get('assessmentId')), 
-              userInfo: userInfo ? {
-                 name: userInfo.get('name'),
-                 employeeId: userInfo.get('employeeId'),
-                 station: userInfo.get('stationCode'),
-                 position: assessmentRecord.get('positionCode'), // Use positionCode from Assessment
-                 positionName: getPositionName(assessmentRecord.get('positionCode')),
-                 objectId: userInfo.id // **** 添加 user objectId ****
-              } : {},
-              position: assessmentRecord.get('positionCode'),
-              questions: details.map(d => {
-                  // **** 修改：从本地题库获取 standardAnswer ****
-                  const questionId = d.get('questionId');
-                  let standardAnswerFromBank = undefined;
-                  const bankQuestion = questionBank.find(q => q.id == questionId);
-                  if (bankQuestion) {
-                      standardAnswerFromBank = bankQuestion.standardAnswer;
-                  }
-                  // **** 结束获取 ****
-                  return {
-                     id: questionId, // 统一使用 questionId
-                      content: d.get('questionContent'),
-                      standardScore: d.get('standardScore'),
-                      standardAnswer: standardAnswerFromBank, // <-- 使用从题库获取的答案
-                      section: d.get('section'),
-                      type: d.get('type'), // 统一使用 type
-                      knowledgeSource: d.get('knowledgeSource')
-                  };
-              }).sort((a,b) => (a.orderIndex ?? 999) - (b.orderIndex ?? 999)), // Add sorting if orderIndex exists
-              answers: details.reduce((acc, d) => {
-                  const qId = d.get('questionId');
-                  acc[qId] = {
-                      score: d.get('score'),
-                      comment: d.get('comment') || '',
-                      startTime: null,
-                      duration: Number(d.get('durationSeconds')) || 0,
-                  };
-                  return acc;
-              }, {}),
-              startTime: assessmentRecord.get('startTime')?.toISOString(),
-              status: 'in_progress', // <<< Set status to in_progress for assessment page
-              elapsedSeconds: Number(assessmentRecord.get('elapsedSeconds')) || 0,
-              currentQuestionIndex: Number(assessmentRecord.get('currentQuestionIndex')) || 0,
-              totalActiveSeconds: Number(assessmentRecord.get('totalActiveSeconds')) || 0,
-              assessor: assessmentRecord.get('assessorName') // Load assessor if exists
-         };
-
-          // 4. Save to localStorage['currentAssessment']
-          localStorage.setItem('currentAssessment', JSON.stringify(assessmentToResume));
-
-         // 5. (Optional but recommended) Update cloud status?
-         // Mark the cloud record as 'resumed' or delete the 'paused' state?
-         // Let's just leave it as 'paused' in the cloud for simplicity. If they pause again, it will be overwritten.
-
-         // 6. Redirect to assessment page
-         console.log("[resumeAssessment] Paused assessment data loaded to currentAssessment. Redirecting...");
-         window.location.href = 'assessment.html';
-
-     } catch (error) {
-          console.error(`[resumeAssessment] Error resuming assessment ID ${assessmentId}:`, error);
-          alert(`继续测评失败: ${error.message}`);
-          if (resumeButton) resumeButton.disabled = false; // Re-enable on error
-     }
+    // 2. 如果允许恢复 (没有冲突或用户确认覆盖)，则跳转
+    if (proceedToResume) {
+        console.log(`Proceeding to navigate to assessment.html?resumeId=${assessmentId}`);
+        window.location.href = `assessment.html?resumeId=${assessmentId}`;
+    } else {
+         // 用户取消，可以不做任何事，或者给个提示
+         // alert("恢复操作已取消。");
+    }
 }
+
+// **** 结束修改 ****
 
 // **** 修改：检查本地暂存/失败的记录 (改为切换显示) ****
 function checkLocalRecords() {

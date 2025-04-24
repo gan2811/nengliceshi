@@ -3,113 +3,331 @@ let selectedSections = new Map(); // 存储已选择的模块和题目数量
 let currentQuestions = [];
 let currentQuestionIndex = 0;
 let userAnswers = {};
-let currentAssessmentData = null; // 存储当前测评的完整数据
+let currentAssessmentData = null; // 存储当前测评的完整数据 (会包含 objectId)
 let timerInterval = null; // 存储计时器
-let currentSessionStartTime = null; // **** 新增：记录当前活动会话开始时间 ****
+let currentSessionStartTime = null; // 记录当前活动会话开始时间
 
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
-    initializeForm();
-    // 绑定按钮事件 (如果测评区域已加载)
+// **** 新增：本地存储键名 ****
+const LOCAL_STORAGE_KEY = 'activeAssessmentState';
+
+// **** 页面加载时的核心逻辑 (修改版) ****
+document.addEventListener('DOMContentLoaded', async function() {
+    console.log("[DOMContentLoaded in assessment.js] Initializing...");
+    showLoading("正在初始化应用...");
+    let stateResumed = false; // **** 新增：标志，跟踪本地状态是否已恢复 ****
+
+    // 确保 currentUser 已由 main.js 设置 (再次检查)
+    if (!currentUser && typeof AV !== 'undefined' && AV.User) {
+        currentUser = AV.User.current();
+    }
+
+    // **** 1. 检查本地存储是否有未完成的测评 ****
+    let localState = null;
+    try {
+        const storedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (storedState) {
+            localState = JSON.parse(storedState);
+            console.log("Found locally stored assessment state:", localState);
+            stateResumed = true; // **** 新增：标记状态已成功恢复 ****
+            console.log("[DOMContentLoaded] Local state successfully resumed. stateResumed set to true."); // **** 新增日志 ****
+        }
+    } catch (e) {
+        console.error("Error parsing locally stored assessment state:", e);
+        localStorage.removeItem(LOCAL_STORAGE_KEY); // 解析失败则移除
+    }
+
+    if (localState && (localState.status === '进行中' || localState.status === 'paused')) {
+        // 发现本地状态，询问用户
+        if (confirm('发现您上次有未完成的测评，是否继续？\n(选择"确定"继续，选择"取消"将放弃上次进度)')) {
+            console.log("User chose to resume local state.");
+            // 用户选择继续 -> 加载本地状态
+            currentAssessmentData = localState;
+            currentQuestions = currentAssessmentData.questions || [];
+            userAnswers = currentAssessmentData.answers || {};
+            let loadedIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
+            if (loadedIndex < 0 || loadedIndex >= currentQuestions.length) loadedIndex = 0;
+            currentQuestionIndex = loadedIndex;
+
+            // 清除本地存储 (状态已加载到内存)
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+
+            // 显示测评界面并恢复
+            document.getElementById('userInfoForm')?.classList.add('d-none');
+            document.getElementById('assessmentArea')?.classList.remove('d-none');
+            displayUserInfo({
+                name: currentAssessmentData.employeeName,
+                employeeId: currentAssessmentData.employeeId,
+                stationCode: currentAssessmentData.stationCode,
+                positionCode: currentAssessmentData.positionCode,
+                positionName: currentAssessmentData.positionName
+            });
+            startTimer(new Date(), currentAssessmentData.totalActiveSeconds || 0); // 使用 totalActiveSeconds 恢复计时器
+            generateQuestionNavigation();
+            displayCurrentQuestion();
+            updateSubmitButton();
+            hideLoading();
+            stateResumed = true; // **** 新增：标记状态已成功恢复 ****
+            console.log("[DOMContentLoaded] Local state successfully resumed. stateResumed set to true."); // **** 新增日志 ****
+        } else {
+            // 用户选择放弃 -> 清除本地状态，继续正常流程
+            console.log("User chose to discard local state.");
+            localStorage.removeItem(LOCAL_STORAGE_KEY);
+        }
+    }
+
+    // **** 2. 只有在未从本地恢复状态时，才检查 URL resumeId 或显示设置表单 ****
+    if (!stateResumed) {
+        console.log("[DOMContentLoaded] Local state not resumed. Checking URL resumeId or showing setup form..."); // **** 新增日志 ****
+        const urlParams = new URLSearchParams(window.location.search);
+        const resumeId = urlParams.get('resumeId');
+
+        if (resumeId && currentUser) {
+            console.log(`[assessment.js] No local state or user discarded. Found resumeId in URL: ${resumeId}. Attempting to resume from cloud.`);
+            await checkResumableAssessment(resumeId); // 从云端恢复
+            hideLoading();
+        } else if (!currentUser) {
+            console.log("[assessment.js] No local state/resumeId. User not logged in. Showing setup form.");
+            document.getElementById('userInfoForm')?.classList.remove('d-none');
+            document.getElementById('assessmentArea')?.classList.add('d-none');
+            initializeForm();
+            hideLoading();
+        } else {
+            console.log(`[assessment.js] No local state/resumeId. User logged in: ${currentUser.getUsername()}. Showing setup form.`);
+            document.getElementById('userInfoForm')?.classList.remove('d-none');
+            document.getElementById('assessmentArea')?.classList.add('d-none');
+            initializeForm();
+            hideLoading();
+        }
+    }
+    // **** 结束条件检查 ****
+    else { // **** 新增 else 块和日志 ****
+         console.log("[DOMContentLoaded] Skipping URL/Setup form checks because local state was resumed.");
+    }
+
+    // **** 按钮事件绑定 (添加日志) ****
+    console.log("[DOMContentLoaded] Setting up button event listeners...");
     const prevBtn = document.getElementById('prevBtn');
     const nextBtn = document.getElementById('nextBtn');
     const submitBtn = document.getElementById('submitBtn');
-    const pauseBtn = document.getElementById('pauseBtn'); // <-- Changed ID from terminateBtn
+    const pauseBtn = document.getElementById('pauseBtn');
 
     if (submitBtn) {
+        console.log("[DOMContentLoaded] Found submitBtn, adding listener.");
         submitBtn.addEventListener('click', submitAssessment);
-        submitBtn.disabled = true; // 初始禁用
+        submitBtn.disabled = true;
+    } else {
+        console.warn("[DOMContentLoaded] submitBtn element not found!");
     }
+    
     if (prevBtn) {
+         console.log("[DOMContentLoaded] Found prevBtn, adding listener.");
          prevBtn.addEventListener('click', showPreviousQuestion);
+    } else {
+        console.warn("[DOMContentLoaded] prevBtn element not found!");
     }
+    
     if (nextBtn) {
+         console.log("[DOMContentLoaded] Found nextBtn, adding listener for showNextQuestion.");
          nextBtn.addEventListener('click', showNextQuestion);
+    } else {
+        console.warn("[DOMContentLoaded] nextBtn element not found! Click event will not work.");
     }
-    if (pauseBtn) { // <-- Changed variable name
-         pauseBtn.addEventListener('click', pauseAssessment); // <-- Changed function name
+    
+    if (pauseBtn) {
+         console.log("[DOMContentLoaded] Found pauseBtn, adding listener.");
+         pauseBtn.addEventListener('click', pauseAssessment);
+    } else {
+        console.warn("[DOMContentLoaded] pauseBtn element not found!");
     }
-
-    // **** 新增：键盘事件监听 ****
+    
+    console.log("[DOMContentLoaded] Setting up keydown listener...");
     document.addEventListener('keydown', handleKeydown);
+    console.log("[DOMContentLoaded] Button listeners setup complete.");
+});
 
-    // 检查是否有正在进行的测评
-    const savedAssessment = localStorage.getItem('currentAssessment');
-    if (savedAssessment) {
-        try { // **** 添加 try...catch 包裹 JSON 解析和恢复逻辑 ****
-            currentAssessmentData = JSON.parse(savedAssessment);
-            
-            // **** 健壮性检查：确保核心数据存在 ****
-            if (!currentAssessmentData || !currentAssessmentData.questions || !currentAssessmentData.answers) {
-                console.error("[Resume] Invalid or incomplete saved assessment data.", currentAssessmentData);
-                localStorage.removeItem('currentAssessment'); // 清除无效数据
-                throw new Error("Saved assessment data is invalid."); // 抛出错误，阻止后续恢复
+// **** 新增：保存当前测评状态到 localStorage ****
+function saveStateToLocalStorage() {
+    if (currentAssessmentData && (currentAssessmentData.status === '进行中' || currentAssessmentData.status === 'paused')) {
+        try {
+             // 更新最新的答案、索引和计时
+            currentAssessmentData.answers = userAnswers;
+            currentAssessmentData.currentQuestionIndex = currentQuestionIndex;
+             // 计算当前会话时长并累加到 totalActiveSeconds
+             let currentSessionDurationSeconds = 0;
+             if (currentSessionStartTime) {
+                 currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
+             } else {
+                 // 如果没有会话开始时间（可能发生在页面刚加载，计时器未启动时保存），则不增加时长
+             }
+             // 注意：这里不停止计时器，只累加时长用于保存。totalActiveSeconds 代表总共花费的时间
+             currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
+             // 重置会话开始时间，以便下次计算增量
+             currentSessionStartTime = new Date(); 
+
+             // 序列化并保存
+            const stateString = JSON.stringify(currentAssessmentData);
+            localStorage.setItem(LOCAL_STORAGE_KEY, stateString);
+            console.log("Assessment state saved to localStorage.");
+        } catch (e) {
+            console.error("Error saving assessment state to localStorage:", e);
+        }
+    } else {
+        // 如果没有进行中的测评，确保清除本地存储
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+}
+
+// **** 新增：页面卸载前保存状态 ****
+window.addEventListener('beforeunload', function(event) {
+    console.log("[beforeunload] Saving state before leaving...");
+    saveStateToLocalStorage();
+    // 不需要设置 event.returnValue 或调用 preventDefault
+});
+
+// **** 新增：检查并恢复测评状态的函数，接受 assessmentId ****
+async function checkResumableAssessment(assessmentId = null) {
+    // **** 只有提供了 assessmentId 才执行恢复 ****
+    if (!assessmentId) {
+        console.log("checkResumableAssessment called without an assessmentId. Skipping cloud call.");
+        // 确保显示设置界面
+        document.getElementById('userInfoForm')?.classList.remove('d-none');
+        document.getElementById('assessmentArea')?.classList.add('d-none');
+        initializeForm(); // 确保表单初始化
+        return; // 不执行任何操作
+    }
+
+    console.log(`Checking for resumable assessment with ID: ${assessmentId}...`);
+    showLoading("正在加载暂停的测评..."); // 显示加载提示
+     try {
+        // **** 调用云函数，传入ID ****
+        const resumableData = await AV.Cloud.run('getResumableAssessment', { assessmentId: assessmentId });
+
+        if (resumableData && resumableData.objectId) {
+            console.log(`Found resumable assessment: ${resumableData.objectId}`);
+            // **** 验证返回的 objectId 是否与请求的一致 (可选但推荐) ****
+            if (resumableData.objectId !== assessmentId) {
+                 console.warn(`Requested assessmentId ${assessmentId} but received ${resumableData.objectId}. Proceeding anyway.`);
+                 // 或者抛出错误 throw new Error('返回的测评ID与请求的不匹配');
             }
 
-            currentQuestions = currentAssessmentData.questions;
-            userAnswers = currentAssessmentData.answers;
+            // **** 权限检查：虽然云函数做了检查，前端也可以再确认一次(如果云函数返回owner信息) ****
+            // if (resumableData.ownerId && resumableData.ownerId !== currentUser.id) {
+            //     throw new Error('您无权恢复此测评记录');
+            // }
+
+            currentAssessmentData = resumableData;
+            // currentQuestions = currentAssessmentData.questions || []; // **** 修改：在赋值前补充 standardAnswer ****
+            userAnswers = currentAssessmentData.answers || {};
             let loadedIndex = currentAssessmentData.currentQuestionIndex !== undefined ? currentAssessmentData.currentQuestionIndex : 0;
 
-            // **** 关键：验证加载的索引 ****
+            // **** 新增：从本地题库补充 standardAnswer ****
+            let questionsFromBackend = currentAssessmentData.questions || [];
+            let localQuestionBank = [];
+            try {
+                localQuestionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
+            } catch (e) {
+                console.error("Error loading question bank from localStorage:", e);
+            }
+            
+            const enrichedQuestions = questionsFromBackend.map(backendQuestion => {
+                const bankQuestion = localQuestionBank.find(q => q.id == backendQuestion.id); // Use non-strict comparison for safety
+                return {
+                    ...backendQuestion,
+                    standardAnswer: bankQuestion ? bankQuestion.standardAnswer : undefined // Add standardAnswer or undefined
+                };
+            });
+            currentQuestions = enrichedQuestions; // **** 使用补充了答案的题目列表 ****
+            // **** 结束补充 ****
+
             if (loadedIndex < 0 || loadedIndex >= currentQuestions.length) {
-                console.warn(`[Resume] Invalid saved currentQuestionIndex (${loadedIndex}) for ${currentQuestions.length} questions. Resetting to 0.`);
-                loadedIndex = 0; // 如果索引无效，重置为 0
-                // 可选：也可以重置为最后一题 currentQuestions.length - 1
+                loadedIndex = 0;
             }
-            currentQuestionIndex = loadedIndex; // 使用验证或重置后的索引
-            
-            // **** 确保加载累计的活动时间 ****
-            currentAssessmentData.totalActiveSeconds = currentAssessmentData.totalActiveSeconds || 0; // 确保该字段存在并初始化
-            
-            // **** 调用 displayUserInfo 显示信息 ****
-            if(currentAssessmentData.userInfo) { // 检查 userInfo 是否存在
-               displayUserInfo(currentAssessmentData.userInfo);
-            } else {
-                console.warn("[Resume] userInfo not found in saved data.");
-                // 可以考虑根据 employeeId 等信息重新获取
-            }
+            currentQuestionIndex = loadedIndex;
+            // ... (加载 index, employeeId 等，与之前逻辑类似) ...
+            // currentEmployeeId = currentAssessmentData.employeeId;
+            // currentEmployeeName = currentAssessmentData.employeeName;
+            // currentPositionCode = currentAssessmentData.positionCode;
+            // currentStationCode = currentAssessmentData.stationCode;
+            // ...
 
-            // 隐藏信息表单，显示测评区域
-            const userInfoForm = document.getElementById('userInfoForm'); // 假设 setup 页面的 ID
-            const assessmentArea = document.getElementById('assessmentArea'); // 假设测评界面的 ID
-            if (userInfoForm) userInfoForm.classList.add('d-none');
-            if (assessmentArea) assessmentArea.classList.remove('d-none');
-            
-            // 恢复计时器状态 (显示总流逝时间)
-            if (currentAssessmentData.startTime) { // 检查 startTime 是否存在
-                const assessmentStartTime = new Date(currentAssessmentData.startTime);
-                const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0; // 这是总流逝时间
-                startTimer(assessmentStartTime, elapsedSeconds); 
-            } else {
-                 console.warn("[Resume] startTime not found in saved data. Cannot resume timer accurately.");
-                 // 可以考虑启动一个新计时器，或者不启动
-            }
+            console.log("Resuming assessment...");
+            // 恢复时：隐藏设置界面，显示测评界面
+            document.getElementById('userInfoForm')?.classList.add('d-none');
+            document.getElementById('assessmentArea')?.classList.remove('d-none');
+            // 更新界面顶部的用户信息显示
+            displayUserInfo({
+                 name: currentAssessmentData.employeeName,
+                 employeeId: currentAssessmentData.employeeId,
+                 stationCode: currentAssessmentData.stationCode, // 假设云函数返回这些
+                 stationName: currentAssessmentData.stationName, // 假设云函数返回这些
+                 positionCode: currentAssessmentData.positionCode, // 假设云函数返回这些
+                 positionName: currentAssessmentData.positionName // 假设云函数返回这些
+             });
 
-            // 生成导航并显示当前题目
-            generateQuestionNavigation(); // Generate buttons first
-            showQuestion(currentQuestionIndex); // Then show the correct question
-            updateProgressAndStatus(); // Update counts
-            updateSubmitButton(); // Update submit button state
-        
-        } catch (error) {
-            console.error("[Resume] Error resuming assessment from localStorage:", error);
-            // 如果恢复出错，清除可能损坏的数据并显示设置界面
-            localStorage.removeItem('currentAssessment');
-            const userInfoForm = document.getElementById('userInfoForm');
-            const assessmentArea = document.getElementById('assessmentArea');
-            if (userInfoForm) userInfoForm.classList.remove('d-none');
-            if (assessmentArea) assessmentArea.classList.add('d-none');
-            alert("恢复之前的测评进度时出错，请重新开始。");
+            // 启动计时器
+            if (currentAssessmentData.assessmentDate) {
+                const assessmentStartTime = new Date(currentAssessmentData.assessmentDate);
+                const elapsedSeconds = currentAssessmentData.elapsedSeconds || 0;
+                startTimer(assessmentStartTime, elapsedSeconds);
+            } else {
+                startTimer(new Date(), currentAssessmentData.elapsedSeconds || 0); // Fallback
+            }
+            displayCurrentQuestion(); // 显示当前题目
+            updateSubmitButton(); // 更新提交按钮状态
+            generateQuestionNavigation(); // 生成题目导航
+
+        } else {
+            // 虽然传入了ID，但云函数没有返回有效数据（可能已被删除或完成）
+            console.log(`No resumable assessment found for ID ${assessmentId} or an error occurred in cloud function.`);
+            alert(`无法加载ID为 ${assessmentId} 的暂停测评，可能已被删除或已完成。将显示新测评表单。`);
+            // 显示设置界面
+            document.getElementById('userInfoForm')?.classList.remove('d-none');
+            document.getElementById('assessmentArea')?.classList.add('d-none');
+            initializeForm(); // 确保表单初始化
         }
-
-    } else {
-        // 没有正在进行的测评，显示信息表单
-        const userInfoForm = document.getElementById('userInfoForm');
-        const assessmentArea = document.getElementById('assessmentArea');
-         if (userInfoForm) userInfoForm.classList.remove('d-none');
-         if (assessmentArea) assessmentArea.classList.add('d-none');
+    } catch (error) {
+        console.error("Error checking resumable assessment:", error);
+        alert("加载暂停的测评失败: " + error.message);
+        // 出错也显示设置界面
+        document.getElementById('userInfoForm')?.classList.remove('d-none');
+        document.getElementById('assessmentArea')?.classList.add('d-none');
+        initializeForm(); // 确保表单初始化
+    } finally {
+        hideLoading(); // 确保隐藏加载提示
     }
-});
+}
+
+// **** 新增：简单的加载提示 ****
+function showLoading(message = "加载中...") {
+    let loadingElement = document.getElementById('loadingOverlay');
+    if (!loadingElement) {
+        loadingElement = document.createElement('div');
+        loadingElement.id = 'loadingOverlay';
+        loadingElement.style.position = 'fixed';
+        loadingElement.style.left = '0';
+        loadingElement.style.top = '0';
+        loadingElement.style.width = '100%';
+        loadingElement.style.height = '100%';
+        loadingElement.style.backgroundColor = 'rgba(0, 0, 0, 0.5)';
+        loadingElement.style.color = 'white';
+        loadingElement.style.display = 'flex';
+        loadingElement.style.justifyContent = 'center';
+        loadingElement.style.alignItems = 'center';
+        loadingElement.style.zIndex = '9999';
+        loadingElement.innerHTML = `<div class="spinner-border text-light" role="status"><span class="visually-hidden">Loading...</span></div><span style="margin-left: 15px;">${message}</span>`;
+        document.body.appendChild(loadingElement);
+    } else {
+        loadingElement.querySelector('span:last-child').textContent = message;
+        loadingElement.style.display = 'flex';
+    }
+}
+
+function hideLoading() {
+    const loadingElement = document.getElementById('loadingOverlay');
+    if (loadingElement) {
+        loadingElement.style.display = 'none';
+    }
+}
 
 // **** 新增：处理键盘事件 ****
 function handleKeydown(event) {
@@ -165,55 +383,94 @@ function getStationName(code) {
 
 // 初始化表单
 function initializeForm() {
+    console.log("[initializeForm] Starting..."); // Log start
     const form = document.getElementById('basicInfoForm');
-    form.addEventListener('submit', function(e) {
-        e.preventDefault(); // 阻止表单默认提交行为
-        // 不在这里调用 startAssessment，只在点击开始按钮时调用
-    });
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault(); 
+        });
+    }
 
     // 动态加载岗位选项
     const positionDropdown = document.getElementById('position');
-    const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]');
-    const positions = new Set();
+    if(positionDropdown) {
+        console.log("[initializeForm] Found position dropdown.");
+        let questionBank = [];
+        let positions = new Set();
+        try {
+            const storedBank = localStorage.getItem('questionBank');
+            console.log("[initializeForm] Raw questionBank from localStorage:", storedBank);
+            if (!storedBank) {
+                console.warn("[initializeForm] questionBank is empty or not found in localStorage.");
+            } else {
+                questionBank = JSON.parse(storedBank || '[]'); // Parse here
+                console.log("[initializeForm] Parsed questionBank:", questionBank);
 
-    questionBank.forEach(q => {
-        if (q.position && Array.isArray(q.position)) {
-            q.position.forEach(p => {
-                if (p && p !== 'all') { // 排除 'all'
-                    positions.add(p);
-                }
-            });
-        } else if (q.position && typeof q.position === 'string' && q.position !== 'all') {
-            positions.add(q.position); // 处理单个字符串岗位
+                // Iterate and extract positions
+                questionBank.forEach((q, index) => {
+                    if (q.position && Array.isArray(q.position)) {
+                        q.position.forEach(p => {
+                            if (p && p !== 'all') { // 排除 'all'
+                                positions.add(p);
+                            }
+                        });
+                    } else if (q.position && typeof q.position === 'string' && q.position !== 'all') {
+                        positions.add(q.position); // 处理单个字符串岗位
+                    }
+                    // Optional: Log if a question doesn't contribute a valid position
+                    // else { console.log(`[initializeForm] Question ${index} has no valid position:`, q.position); }
+                });
+                console.log("[initializeForm] Extracted unique positions:", positions);
+            }
+        } catch (e) {
+            console.error("[initializeForm] Error parsing questionBank or extracting positions:", e);
+            // Optionally clear the dropdown or show an error message to the user
+            positionDropdown.innerHTML = '<option value="">加载岗位失败</option>'; 
+            return; // Stop further processing if bank fails
         }
-    });
 
-    // 清空现有选项 (保留第一个默认选项)
-    while (positionDropdown.options.length > 1) {
-        positionDropdown.remove(1);
+        // Clear existing options (except the first placeholder)
+        while (positionDropdown.options.length > 1) {
+            positionDropdown.remove(1);
+        }
+
+        // Populate dropdown
+        if (positions.size === 0) {
+            console.warn("[initializeForm] No valid positions found in the question bank (excluding 'all').");
+            // Keep the default "请选择岗位" or add a specific message
+            // positionDropdown.options[0].text = '题库中无可用岗位';
+        } else {
+            console.log(`[initializeForm] Populating dropdown with ${positions.size} positions...`);
+            positions.forEach(pos => {
+                const option = document.createElement('option');
+                option.value = pos;
+                option.textContent = getPositionName(pos); // Use helper function for display name
+                console.log(`[initializeForm] Adding option: value='${pos}', text='${option.textContent}'`);
+                positionDropdown.appendChild(option);
+            });
+        }
+
+        // Add event listener and trigger initial load
+        positionDropdown.removeEventListener('change', loadSections); // Remove first to prevent duplicates
+        positionDropdown.addEventListener('change', loadSections);
+        console.log("[initializeForm] Calling loadSections initially.");
+        loadSections(); // 初始化时触发加载板块
+    } else {
+        console.warn("[initializeForm] Position dropdown element not found.");
     }
-
-    // 添加从题库提取的岗位
-    positions.forEach(pos => {
-        const option = document.createElement('option');
-        option.value = pos;
-        option.textContent = getPositionName(pos); // 使用中文名称
-        positionDropdown.appendChild(option);
-    });
-
-    // 添加岗位选择变化监听器
-    positionDropdown.addEventListener('change', loadSections);
 
     // 绑定开始按钮点击事件
     const startBtn = document.getElementById('startBtn');
-    startBtn.addEventListener('click', function(e) {
-        e.preventDefault(); // 阻止按钮默认行为
-        startAssessment(); // 只在点击开始按钮时开始测评
-    });
-
-    // 初始化时触发一次，以防页面加载时已有岗位被选中（例如浏览器记住选择）
-    loadSections();
-    updateStartButton(); // 确保按钮状态正确
+    if(startBtn) {
+        startBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            startAssessment();
+        });
+        updateStartButton(); // 确保按钮状态正确
+    } else {
+        console.warn("[initializeForm] Start button not found.");
+    }
+    console.log("[initializeForm] Finished.");
 }
 
 // 加载模块选择卡片 (修改版)
@@ -469,138 +726,151 @@ function displayUserInfo(userData) {
     if (!userData) return;
     document.getElementById('userInfoName').textContent = userData.name || '-';
     document.getElementById('userInfoEmployeeId').textContent = userData.employeeId || '-';
-    document.getElementById('userInfoStation').textContent = getStationName(userData.station) || '-';
-    document.getElementById('userInfoPosition').textContent = userData.positionName || getPositionName(userData.position) || '-'; 
+    document.getElementById('userInfoStation').textContent = getStationName(userData.stationCode || userData.station) || '-';
+    document.getElementById('userInfoPosition').textContent = userData.positionName || getPositionName(userData.positionCode || userData.position) || '-'; 
 }
 
-// 开始测评
+// 开始测评 (修改：增加本地状态检查和清除)
 function startAssessment() {
-    console.log("[startAssessment] 函数开始");
-    const totalQuestionsInput = document.getElementById('totalQuestionsToAsk'); 
-    
-    // **** 确保 try 关键字在函数体内部，包裹主要逻辑 ****
+    console.log("[startAssessment] Function start attempt...");
+    if (!currentUser) {
+        console.log("[startAssessment] User not logged in. Showing login modal.");
+        alert("请先登录后再开始测评。");
+        return;
+    }
+    console.log(`[startAssessment] User logged in: ${currentUser.id}. Proceeding...`);
+
+    // **** 新增：检查本地是否有状态，如果开始新测评需要确认 ****
+    let localState = null;
+    try {
+        const storedState = localStorage.getItem(LOCAL_STORAGE_KEY);
+        if (storedState) {
+            localState = JSON.parse(storedState);
+        }
+    } catch (e) { /* ignore error */ }
+
+    if (localState && (localState.status === '进行中' || localState.status === 'paused')) {
+         if (!confirm('您当前有未完成或暂停的测评进度。开始新的测评将丢失之前的进度，确定要开始新的测评吗？')) {
+             console.log("User cancelled starting new assessment due to existing local state.");
+             return; // 用户取消
+         }
+         // 用户确认，清除旧状态
+         console.log("User confirmed starting new assessment, clearing previous local state.");
+         localStorage.removeItem(LOCAL_STORAGE_KEY);
+    }
+    // **** 结束检查 ****
+
+    const assesseeNameInput = document.getElementById('name');
+    const assesseeIdInput = document.getElementById('employeeId');
+    const assesseeEmployeeName = assesseeNameInput?.value?.trim();
+    const assesseeEmployeeId = assesseeIdInput?.value?.trim();
+
+    if (!assesseeEmployeeId || !assesseeEmployeeName) {
+        alert('请在上方表单中输入被测评人的工号和姓名。');
+        if (!assesseeEmployeeName) assesseeNameInput?.focus();
+        else assesseeIdInput?.focus();
+        return;
+    }
+    console.log(`[startAssessment] Assessee Info: ID=${assesseeEmployeeId}, Name=${assesseeEmployeeName}`);
+
+    const positionSelect = document.getElementById('position');
+    const stationSelect = document.getElementById('station');
+    const positionCode = positionSelect?.value;
+    const positionName = positionSelect?.options[positionSelect.selectedIndex]?.text || '';
+    const stationCode = stationSelect?.value;
+    const stationName = stationSelect?.options[stationSelect.selectedIndex]?.text || '';
+
+    const selectedSectionsMap = new Map();
+    document.querySelectorAll('.section-count-input').forEach(input => {
+         const section = input.dataset.section;
+         const count = parseInt(input.value, 10) || 0;
+        if (count > 0) selectedSectionsMap.set(section, count);
+    });
+    console.log("[startAssessment] Selected sections:", selectedSectionsMap);
+
+    if (!positionCode || !stationCode) {
+        alert('请选择您的岗位和站点。');
+        return;
+    }
+
     try { 
-        const name = document.getElementById('name').value;
-        const employeeId = document.getElementById('employeeId').value;
-        const positionSelect = document.getElementById('position');
-        const stationSelect = document.getElementById('station');
-        const positionCode = positionSelect.value;
-        const positionName = positionSelect.options[positionSelect.selectedIndex]?.text || '';
-        const stationCode = stationSelect.value;
-        const stationName = stationSelect.options[stationSelect.selectedIndex]?.text || '';
-        
-        // **** 修正 selectedSections 获取方式，使用 data-section 属性 ****
-        const selectedSectionsMap = new Map(); // 使用 Map 存储选中的 section 和数量
-        document.querySelectorAll('.section-count-input').forEach(input => {
-             const section = input.dataset.section;
-             const count = parseInt(input.value, 10) || 0;
-             if (count > 0) {
-                 selectedSectionsMap.set(section, count);
-             }
-        });
-
-        currentEmployeeId = employeeId;
-        currentEmployeeName = name;
-        currentPositionCode = positionCode;
-        currentPositionName = positionName;
-        currentStationCode = stationCode;
-        currentStationName = stationName;
-        
-        // **** 使用 selectedSectionsMap 的大小判断是否有选择 ****
-        if (!currentEmployeeId || !currentEmployeeName || !currentPositionCode || !currentStationCode /* || selectedSectionsMap.size === 0 */ ) { // 先不强制必须选模块
-            alert('请确保姓名、工号、岗位、站点都已选择。');
-            return;
-        }
-
-        // 确保 allQuestionsData 已加载 (这里假设它已在别处加载)
-        if (!allQuestionsData || Object.keys(allQuestionsData).length === 0) {
-            console.error("[startAssessment] 题目数据 (allQuestionsData) 未加载。");
-            alert("错误：无法加载题目数据，请刷新页面或联系管理员。");
-            return;
-        }
-        
-        // **** 修正：根据 selectedSectionsMap 确定哪些模块被选中，并获取题目 ****
         let allSelectedQuestions = [];
-        const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]'); // 假设从 localStorage 获取
-        
-        // 1. 获取所有必答题
+        const questionBank = JSON.parse(localStorage.getItem('questionBank') || '[]'); 
         const requiredQuestions = questionBank.filter(q => 
              q.position && (Array.isArray(q.position) ? q.position.includes(positionCode) : q.position === positionCode || q.position.includes('all')) &&
              q.type === 'required'
         );
         allSelectedQuestions = allSelectedQuestions.concat(requiredQuestions);
         console.log(`[startAssessment] Found ${requiredQuestions.length} required questions.`);
-
-        // 2. 根据 selectedSectionsMap 获取选答题
         selectedSectionsMap.forEach((count, section) => {
             const sectionRandomQuestions = questionBank.filter(q =>
                 q.position && (Array.isArray(q.position) ? q.position.includes(positionCode) : q.position === positionCode || q.position.includes('all')) &&
                 q.section === section &&
                 q.type === 'random'
             );
-            const randomSubset = getRandomQuestions(sectionRandomQuestions, count); // 使用之前的 getRandomQuestions
+            const randomSubset = getRandomQuestions(sectionRandomQuestions, count);
             allSelectedQuestions = allSelectedQuestions.concat(randomSubset);
-            console.log(`[startAssessment] Selected ${randomSubset.length} random questions from section '${section}'.`);
         });
-
         if (allSelectedQuestions.length === 0) {
              console.error("[startAssessment] 最终选出的题目列表为空。");
-             alert("错误：未能根据您的选择组合出题目列表，请检查配置或选择。");
-             return;
+             alert("错误：未能根据您的选择组合出题目列表。");
+            return;
         }
-
-        // **** 不再需要从 totalQuestionsInput 读取，总数由必答+选答决定 ****
         currentQuestions = allSelectedQuestions; 
         console.log(`[startAssessment] Final total questions: ${currentQuestions.length}`);
         
         userAnswers = {};
         currentQuestions.forEach(question => {
-            userAnswers[question.id] = {
-                score: null,
-                comment: '',
-                startTime: null,
-                duration: 0
-            };
+            userAnswers[question.id] = { score: null, comment: '', startTime: null, duration: 0 };
         });
+        
         currentAssessmentData = {
-            assessmentId: generateFrontendId(), 
-            employeeId: currentEmployeeId, 
-            employeeName: currentEmployeeName, 
-            positionCode: currentPositionCode, 
-            positionName: currentPositionName,
-            stationCode: currentStationCode, 
-            stationName: currentStationName,
-            assessmentDate: new Date().toISOString(), 
-            status: '进行中',
+            objectId: null,
+            assessmentId: generateFrontendId(), // 使用前端生成的数字ID
+            employeeId: assesseeEmployeeId,
+            employeeName: assesseeEmployeeName,
+            positionCode: positionCode,
+            positionName: positionName,
+            stationCode: stationCode,
+            stationName: stationName,
+            startTime: new Date().toISOString(), // 使用 ISO 格式字符串
+            status: '进行中', // 明确状态
             questions: currentQuestions.map(q => ({ 
-                id: q.id, 
-                standardScore: q.standardScore,
-                content: q.content, 
-                section: q.section, // 添加 section
-                type: q.type // 添加 type
+                id: q.id, standardScore: q.standardScore, content: q.content, section: q.section, type: q.type
             })),
-            answers: userAnswers, 
-            totalScore: null,
-            scoreRate: null,
-            totalActiveSeconds: 0, 
-            assessor: null
+            answers: userAnswers,
+            totalScore: null, 
+            scoreRate: null, 
+            totalActiveSeconds: 0, // 初始化总用时
+            assessor: null,
+            currentQuestionIndex: 0 // 初始化当前题目索引
         };
-        console.log(`[startAssessment] Questions loaded. count=${currentQuestions?.length}, currentAssessmentData initialized.`);
-        currentQuestionIndex = 0; 
-        console.log(`[startAssessment] Initial currentQuestionIndex set to: ${currentQuestionIndex}`);
-        document.getElementById('assessmentSetup').style.display = 'none';
-        document.getElementById('assessmentInterface').style.display = 'block';
-        generateQuestionNavigation();
+        console.log("[startAssessment] Initial assessment data created locally.");
+
+        currentQuestionIndex = 0;
+        document.getElementById('userInfoForm')?.classList.add('d-none');
+        document.getElementById('assessmentArea')?.classList.remove('d-none');
+        displayUserInfo({
+            name: currentAssessmentData.employeeName,
+            employeeId: currentAssessmentData.employeeId,
+            stationCode: currentAssessmentData.stationCode,
+            positionCode: currentAssessmentData.positionCode,
+            positionName: currentAssessmentData.positionName
+        });
+        generateQuestionNavigation(); 
         displayCurrentQuestion(); 
-        currentSessionStartTime = new Date();
-        startTimer(currentSessionStartTime); 
-        console.log("[startAssessment] 函数结束，测评界面已显示");
+        // currentSessionStartTime = new Date(); // startTimer 会设置
+        startTimer(new Date(), 0); // 开始新计时，初始用时为0
+        console.log("[startAssessment] Assessment interface shown.");
+
+        // **** 开始测评时，保存一次初始状态 ****
+        saveStateToLocalStorage();
 
     } catch (error) { 
         console.error("[startAssessment] 开始测评时发生错误:", error);
         alert(`开始测评失败: ${error.message}`); 
-        document.getElementById('assessmentSetup').style.display = 'block';
-        document.getElementById('assessmentInterface').style.display = 'none';
+        document.getElementById('userInfoForm')?.classList.remove('d-none');
+        document.getElementById('assessmentArea')?.classList.add('d-none');    
     }
 }
 
@@ -610,17 +880,17 @@ function getRandomQuestions(questions, count) {
     return shuffled.slice(0, count);
 }
 
-// 更新显示题目
+// 更新显示题目 (修改：调用保存状态)
 function displayCurrentQuestion() {
     // **** 添加详细日志 ****
-    // console.log("[displayCurrentQuestion] Function called for index:", currentQuestionIndex);
+    console.log("[displayCurrentQuestion] Called for index:", currentQuestionIndex);
     if (currentQuestionIndex < 0 || currentQuestionIndex >= currentQuestions.length) {
         console.error("[displayCurrentQuestion] Invalid question index:", currentQuestionIndex);
         return; 
     }
-    // console.log("[displayCurrentQuestion] Current question data:", JSON.parse(JSON.stringify(currentQuestions[currentQuestionIndex])));
-
     const question = currentQuestions[currentQuestionIndex];
+    console.log("[displayCurrentQuestion] Question data:", JSON.parse(JSON.stringify(question))); // Log question data
+
     // 使用 HTML 中实际存在的 ID
     const progressElement = document.getElementById('currentQuestionNumber'); 
     const questionContentElement = document.getElementById('questionContentText'); 
@@ -631,21 +901,28 @@ function displayCurrentQuestion() {
     
     // 更新检查，只检查核心元素
     if (!progressElement || !questionContentElement || !standardAnswerElement || !scoreInputElement || !commentInputElement || !standardScoreDisplayElement) {
-        console.error("[displayCurrentQuestion] Assessment UI elements (progress, content, score display, score input, comment) are missing or have incorrect IDs in assessment.html.");
-        // 可以在这里停止执行或采取其他措施，防止后续代码出错
+        console.error("[displayCurrentQuestion] Critical UI elements (progress, content, score display, score input, comment) are missing or have incorrect IDs.");
         return; 
     }
-    // console.log("[displayCurrentQuestion] All required elements found. Proceeding to update UI.");
+    console.log("[displayCurrentQuestion] All critical elements found. Proceeding to update UI.");
 
     // 更新进度显示格式
-    progressElement.textContent = `第 ${currentQuestionIndex + 1} 题 (共 ${currentQuestions.length} 题)`; 
+    const progressText = `第 ${currentQuestionIndex + 1} 题 (共 ${currentQuestions.length} 题)`;
+    console.log("[displayCurrentQuestion] Updating progress to:", progressText);
+    progressElement.textContent = progressText; 
+    
+    console.log("[displayCurrentQuestion] Updating question content to:", question.content);
     questionContentElement.textContent = question.content; // 直接设置文本内容
     
     // **** 为标准答案元素添加 preserve-newlines 类 ****
-    standardAnswerElement.innerHTML = formatAnswerContent(question.standardAnswer); // 使用 innerHTML 以渲染可能的 HTML
+    const formattedAnswer = formatAnswerContent(question.standardAnswer);
+    console.log("[displayCurrentQuestion] Updating standard answer to (formatted):", formattedAnswer);
+    standardAnswerElement.innerHTML = formattedAnswer; // 使用 innerHTML 以渲染可能的 HTML
     standardAnswerElement.classList.add('preserve-newlines');
 
-    standardScoreDisplayElement.textContent = question.standardScore !== null ? question.standardScore : 'N/A'; // Display standard score
+    const standardScoreText = question.standardScore !== null ? question.standardScore : 'N/A';
+    console.log("[displayCurrentQuestion] Updating standard score display to:", standardScoreText);
+    standardScoreDisplayElement.textContent = standardScoreText; // Display standard score
 
     // **记录当前题目的开始作答时间 (逻辑保持)**
     const now = new Date().toISOString();
@@ -665,30 +942,18 @@ function displayCurrentQuestion() {
     scoreInputElement.max = question.standardScore || 100; // 设置最大分
     commentInputElement.value = currentAnswer.comment || ''; // 设置评语
 
-    // 移除旧的动态创建和绑定逻辑
-    /*
-    // 清空之前的选项/输入区域
-    answerOptionsElement.innerHTML = ''; 
-    // 创建评分滑块和评语输入框 ...
-    // 绑定事件以实时保存评分和评语 ...
-    */
-   
     // **** 修改：为固定的输入框添加/更新事件监听器 (如果需要实时保存) ****
-    // 为确保事件不重复绑定，可以先移除旧监听器（如果存在），或使用 once 选项
-    // 这里简化处理：假设每次显示题目时重新绑定是安全的
-    scoreInputElement.oninput = () => saveCurrentAnswer(false); // 使用 input 事件实时保存
-    commentInputElement.oninput = () => saveCurrentAnswer(false); // 使用 input 事件实时保存
+    scoreInputElement.oninput = () => { saveCurrentAnswer(false); saveStateToLocalStorage(); }; // 添加 saveStateToLocalStorage
+    commentInputElement.oninput = () => { saveCurrentAnswer(false); saveStateToLocalStorage(); }; // 添加 saveStateToLocalStorage
 
     // 更新导航按钮状态
     document.getElementById('prevBtn').disabled = currentQuestionIndex === 0;
     document.getElementById('nextBtn').disabled = currentQuestionIndex === currentQuestions.length - 1;
-    document.getElementById('submitBtn').disabled = !checkAllAnswered(); // 提交按钮状态取决于是否所有题目都已回答
+    document.getElementById('submitBtn').disabled = !checkAllAnswered(); 
 
-    // 更新总览和进度条 (确保调用)
     updateProgressAndStatus();
     updateQuestionNavigation();
 
-    // 将焦点设置到评分输入框
     scoreInputElement.focus(); 
 }
 
@@ -712,61 +977,72 @@ function checkAllAnswered() {
     return result;
 }
 
-// **** 修改保存逻辑：允许切换题目，即使未评分 ****
-function saveCurrentAnswer(isNavigating = false) { // Added isNavigating flag
-    console.log(`[saveCurrentAnswer] Called. isNavigating=${isNavigating}, currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // 添加日志
-    
+// 保存当前答案 (恢复完整逻辑)
+function saveCurrentAnswer(isNavigating = false) { 
+    console.log(`[saveCurrentAnswer] Called. isNavigating=${isNavigating}, currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`);
+
     // **** 添加健壮性检查 ****
     if (!currentQuestions || currentQuestions.length === 0) {
         console.error("[saveCurrentAnswer] Error: currentQuestions is empty or not loaded.");
-        // 可以考虑是否需要 alert 或其他错误处理
-        return; // 提前退出，防止后续错误
+        return; 
     }
     if (currentQuestionIndex < 0 || currentQuestionIndex >= currentQuestions.length) {
         console.error(`[saveCurrentAnswer] Error: Invalid currentQuestionIndex: ${currentQuestionIndex}. Max index is ${currentQuestions.length - 1}`);
-        // 同样，考虑错误处理
-        return; // 提前退出
+        return; 
     }
     // **** 检查结束 ****
 
+    // **** 获取输入元素 ****
     const scoreInput = document.getElementById('scoreInput');
-    console.log(`[saveCurrentAnswer] Accessing currentQuestions[${currentQuestionIndex}] before getting id.`); // 在访问前打印
-    const questionId = currentQuestions[currentQuestionIndex].id;
-    const score = scoreInput.value !== '' ? parseFloat(scoreInput.value) : null; // Keep score as null if empty
-    const comment = commentInput.value;
-    const standardScore = currentQuestions[currentQuestionIndex].standardScore;
-
-    // Validate score range only if a score is entered (or not navigating)
-    // If navigating, we accept null scores without validation for now
-    if (score !== null && (isNaN(score) || score < 0 || (standardScore !== null && score > standardScore))) {
-        // Don't alert if just navigating away from an unscored question
-        if (!isNavigating || score !== null) { 
-             alert(`请输入有效的得分 (0 到 ${standardScore !== null ? standardScore : '最大值'})。`);
-             scoreInput.focus();
-             // If navigating, maybe prevent navigation? Or just save null?
-             // For now, just alert and focus, user has to fix or clear it.
-             // *Consider the desired UX here carefully*
-             // Let's save null if invalid during navigation to allow moving away
-             if(isNavigating) {
-                 userAnswers[questionId].score = null;
-                 userAnswers[questionId].comment = comment;
-                 return; // Allow navigation
-             }
-        }
-        // If not navigating, return false to indicate save failed
-         // return false; 
-         // Let's proceed but save null if invalid
-         userAnswers[questionId].score = null; 
-    } else {
-       userAnswers[questionId].score = score;
+    const commentInput = document.getElementById('commentInput'); // << 定义 commentInput
+    if (!scoreInput || !commentInput) { // 检查元素是否存在
+        console.error("[saveCurrentAnswer] Error: scoreInput or commentInput element not found.");
+        return;
     }
-    
+
+    // **** 获取当前题目信息 ****
+    const currentQuestion = currentQuestions[currentQuestionIndex];
+    const questionId = currentQuestion.id; // << 定义 questionId
+    const standardScore = currentQuestion.standardScore;
+
+    // **** 获取用户输入 ****
+    const score = scoreInput.value !== '' ? parseFloat(scoreInput.value) : null;
+    const comment = commentInput.value;
+
+    // **** 验证分数 ****
+    // 如果正在导航，则允许保存 null 分数而无需验证
+    let scoreToSave = score;
+    if (score !== null) { // Only validate if a score was entered
+        if (isNaN(score) || score < 0 || (standardScore !== null && score > standardScore)) {
+            if (!isNavigating) { // Only alert if not navigating away
+                 alert(`请输入有效的得分 (0 到 ${standardScore !== null ? standardScore : '最大值'})。`);
+                 scoreInput.focus();
+                 // 对于无效分数，不保存，让用户修正
+                 // 或者可以考虑保存为 null?
+                 // 当前逻辑：不保存无效分数（除非是导航时输入的null）
+                 return; // 阻止进一步执行，用户需要修正
+            } else {
+                // 如果在导航时分数无效，为了能离开，保存为 null
+                console.warn("Invalid score entered while navigating. Saving as null.");
+                scoreToSave = null;
+            }
+        }
+    }
+
+    // **** 更新 userAnswers ****
+    if (!userAnswers[questionId]) { // 确保答案对象存在
+         userAnswers[questionId] = { score: null, comment: '', startTime: null, duration: 0 };
+    }
+    userAnswers[questionId].score = scoreToSave;
     userAnswers[questionId].comment = comment;
+    console.log(`[saveCurrentAnswer] Saved answer for question ${questionId}:`, userAnswers[questionId]);
 
     // 实时更新进度和提交按钮状态
     updateProgressAndStatus();
     updateSubmitButton(); 
-    updateQuestionNavigation(); // **** Call here to update button styles immediately ****
+    updateQuestionNavigation();
+    
+    // 不在此处调用 saveStateToLocalStorage()，由调用者决定
 }
 
 // 记录上一题的用时 (在切换或提交时调用)
@@ -787,39 +1063,43 @@ function recordPreviousQuestionTime() {
      }
 }
 
-// 显示下一题
+// 显示下一题 (修改：调用保存状态)
 function showNextQuestion() {
-    console.log(`[showNextQuestion] Called. Before increment: currentQuestionIndex=${currentQuestionIndex}, totalQuestions=${currentQuestions?.length}`); // 添加日志
+    console.log(`[showNextQuestion] Clicked! currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // Log function entry
+    const nextBtn = document.getElementById('nextBtn');
+    if (nextBtn && nextBtn.disabled) {
+        console.log("[showNextQuestion] Button is disabled. Aborting.");
+        return; // Exit if button is disabled
+    }
+
     if (currentQuestionIndex < currentQuestions.length - 1) {
-        // **先保存当前题目答案 (允许未评分)**
+        console.log("[showNextQuestion] Condition met: currentQuestionIndex < currentQuestions.length - 1. Proceeding...");
         saveCurrentAnswer(true); 
-        // **再记录当前题目用时**
         recordPreviousQuestionTime();
-        
-        // 切换到下一题
         currentQuestionIndex++;
-        console.log(`[showNextQuestion] After increment: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
+        console.log(`[showNextQuestion] Index incremented to: ${currentQuestionIndex}`);
+        console.log("[showNextQuestion] Calling displayCurrentQuestion...");
         displayCurrentQuestion();
+        console.log("[showNextQuestion] Calling saveStateToLocalStorage...");
+        saveStateToLocalStorage(); // **** 切换题目后保存状态 ****
+        console.log("[showNextQuestion] Navigation completed.");
     } else {
-        console.log("[showNextQuestion] Already at the last question."); // 添加日志
+        console.log("[showNextQuestion] Condition NOT met: Already at the last question or invalid state.");
     }
 }
 
-// 显示上一题
+// 显示上一题 (修改：调用保存状态)
 function showPreviousQuestion() {
-    console.log(`[showPreviousQuestion] Called. Before decrement: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
+    console.log(`[showPreviousQuestion] Called. Before decrement: currentQuestionIndex=${currentQuestionIndex}`);
     if (currentQuestionIndex > 0) {
-         // **先保存当前题目答案 (允许未评分)**
          saveCurrentAnswer(true);
-        // **再记录当前题目用时**
         recordPreviousQuestionTime(); 
-        
-        // 切换到上一题
         currentQuestionIndex--;
-        console.log(`[showPreviousQuestion] After decrement: currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
+        console.log(`[showPreviousQuestion] After decrement: currentQuestionIndex=${currentQuestionIndex}`);
         displayCurrentQuestion();
+        saveStateToLocalStorage(); // **** 切换题目后保存状态 ****
     } else {
-         console.log("[showPreviousQuestion] Already at the first question."); // 添加日志
+         console.log("[showPreviousQuestion] Already at the first question.");
     }
 }
 
@@ -908,40 +1188,36 @@ function updateSubmitButton() {
     }
 }
 
-// **** 修改：提交测评 (调用云函数) ****
+// **** 修改：提交测评 ****
 async function submitAssessment() {
-    console.log("[submitAssessment] 函数开始执行 (云函数版)");
-
-    // 获取测评人姓名 (逻辑不变)
+    console.log("[submitAssessment] Function start...");
+    if (!currentUser) {
+        // 这里理论上不应该发生，因为开始就需要登录，但做个检查
+        alert("错误：用户未登录。");
+        showLoginModal(); // 提示登录
+        return;
+    }
+    // ... (获取 assessorName)
     const assessorName = prompt("请输入测评人姓名：");
     if (assessorName === null || assessorName.trim() === "") {
         alert("测评人姓名不能为空，提交已取消。");
-        console.log("[submitAssessment] 测评人姓名为空或取消，函数返回");
         return;
     }
-    console.log("[submitAssessment] 获取到测评人姓名:", assessorName);
-    // 确保 currentAssessmentData 存在
     if (!currentAssessmentData) {
         console.error("[submitAssessment] currentAssessmentData 为空，无法提交。");
         alert("发生错误：找不到当前测评数据。");
         return;
     }
     currentAssessmentData.assessor = assessorName.trim();
-
-    // 保存最后一题答案和时间 (逻辑不变)
+    // ... (保存最后一题答案和时间)
     saveCurrentAnswer(false);
     recordPreviousQuestionTime();
-
-    // 检查所有题目是否都已评分 (逻辑不变)
-    const allAnswered = checkAllAnswered();
-    console.log("[submitAssessment] checkAllAnswered() 返回:", allAnswered);
-    if (!allAnswered) {
+    // ... (检查是否所有题目已评分)
+    if (!checkAllAnswered()) {
         alert('您有未评分的题目，请完成后再提交。');
-        console.log("[submitAssessment] 存在未评分题目，函数返回");
         return;
     }
-
-    // 计算分数、时长等最终数据 (逻辑不变)
+    // ... (计算最终分数、时长等)
     const assessmentEndTime = new Date();
     let totalScore = 0;
     let maxPossibleScore = 0;
@@ -965,285 +1241,164 @@ async function submitAssessment() {
     let totalActiveSeconds = initialTotalActiveSeconds + finalSessionDurationSeconds;
     const scoreRate = maxPossibleScore > 0 ? Math.round((totalScore / maxPossibleScore) * 100) : 0;
 
-    // 更新 currentAssessmentData 用于传递给云函数
     currentAssessmentData.answers = userAnswers;
     currentAssessmentData.score = totalScore;
     currentAssessmentData.maxScore = maxPossibleScore;
     currentAssessmentData.scoreRate = scoreRate;
-    currentAssessmentData.duration = Math.round(totalActiveSeconds / 60); // 仍然计算，云函数也会计算
-    currentAssessmentData.status = 'completed'; // 标记为完成
-    currentAssessmentData.timestamp = assessmentEndTime.toISOString(); // 完成时间戳
+    currentAssessmentData.duration = Math.round(totalActiveSeconds / 60);
+    currentAssessmentData.status = 'completed';
+    currentAssessmentData.timestamp = assessmentEndTime.toISOString();
     currentAssessmentData.totalActiveSeconds = totalActiveSeconds;
 
-    console.log("[submitAssessment] 准备调用云函数 submitAssessmentCloud...");
-    console.log("[submitAssessment] 传递的数据包预览:", JSON.parse(JSON.stringify(currentAssessmentData))); // 打印数据包快照
-
-    // **** 调用云函数 ****
+    console.log("[submitAssessment] Calling submitAssessmentCloud...");
+    showLoading("正在提交测评结果...");
     try {
-        // 显示加载状态 (可选)
-        const submitBtn = document.getElementById('submitBtn');
-        if(submitBtn) {
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 提交中...';
-        }
+        const dataToSend = { ...currentAssessmentData };
+        delete dataToSend.owner;
+        console.log("[submitAssessment] Data being sent to submitAssessmentCloud:", JSON.stringify(dataToSend, null, 2));
+        console.log("[submitAssessment] Value of assessmentId (frontend ID) being sent:", dataToSend.assessmentId);
+        console.log("[submitAssessment] Value of employeeId being sent:", dataToSend.employeeId);
 
-        const savedAssessmentObjectId = await AV.Cloud.run('submitAssessmentCloud', { assessmentData: currentAssessmentData });
-
-        console.log("[submitAssessment] 云函数调用成功，返回 Assessment ObjectId:", savedAssessmentObjectId);
-
-        // **[成功处理] 清除本地存储并跳转**
-        // 保存到本地历史记录 (可选，因为现在主要依赖云端)
-        // 如果决定不保存本地历史，可以注释掉下面几行
-        const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-        const historyRecord = currentAssessmentData; // 直接使用准备好的数据
-        const historyWithoutPaused = history.filter(item => !(item.id === historyRecord.id && item.status === 'paused'));
-        historyWithoutPaused.push(historyRecord);
-        localStorage.setItem('assessmentHistory', JSON.stringify(historyWithoutPaused));
-        console.log("[submitAssessment] 结果已同步保存到本地历史记录。");
-
-        localStorage.removeItem('currentAssessment');
-        console.log("[submitAssessment] 本地 currentAssessment 已清除。准备跳转...");
-
-        // 恢复正常的跳转逻辑
-        window.location.href = `result.html?assessmentId=${savedAssessmentObjectId}`; // 使用云函数返回的 ObjectId
+        const savedObjectId = await AV.Cloud.run('submitAssessmentCloud', { 
+            assessmentData: dataToSend,
+            assessmentObjectId: currentAssessmentData.objectId 
+        });
+        console.log(`[submitAssessment] Cloud function successful. Returned ObjectId: ${savedObjectId}`);
         
-        // 移除调试代码
-        // console.log(`[submitAssessment] [调试] 操作完成，页面跳转已被禁用。收到的 ObjectId: ${savedAssessmentObjectId}`);
-        // alert(`[调试] 测评提交成功！页面跳转已临时禁用，请查看控制台日志中的 ObjectId: ${savedAssessmentObjectId}`);
+        // **** 成功提交后清除本地状态 ****
+        localStorage.removeItem(LOCAL_STORAGE_KEY);
+        console.log("Local assessment state cleared after successful submission.");
 
-        // 移除调试时添加的按钮状态恢复，因为页面会跳转
-        // if (submitBtn) { 
-        //     submitBtn.disabled = false;
-        //     submitBtn.innerHTML = '提交测评 (调试模式)';
-        // }
-
+        currentAssessmentData = null; 
+        window.location.href = `result.html?assessmentId=${savedObjectId}`;
     } catch (error) {
-        // **[错误处理]**
-        console.error('[submitAssessment] 调用云函数时出错:', error);
-
-        // **** 更新：标记为失败并保存回 localStorage ****
-        if (currentAssessmentData) { 
-            currentAssessmentData.status = 'failed_to_submit'; // 标记失败状态
-            currentAssessmentData.errorInfo = { // 可选：记录错误信息
-                code: error.code,
-                message: error.message,
-                timestamp: new Date().toISOString()
-            };
-            try {
-                // 1. 仍然保存到 currentAssessment，以便下次进入测评页时可以提示
-                localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData));
-                console.log("[submitAssessment] 已将失败状态保存回 localStorage ('currentAssessment')，ID:", currentAssessmentData.id);
-                
-                // 2. 同时添加到/更新到 assessmentHistory
-                const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-                const existingIndex = history.findIndex(item => item.id === currentAssessmentData.id);
-                if (existingIndex > -1) {
-                    history[existingIndex] = { ...currentAssessmentData }; // 更新历史记录中的对应项
-                    console.log(`[submitAssessment] 已更新 assessmentHistory 中的失败记录，ID: ${currentAssessmentData.id}`);
-                } else {
-                    history.push({ ...currentAssessmentData }); // 添加为新的失败记录
-                     console.log(`[submitAssessment] 已将新的失败记录添加到 assessmentHistory，ID: ${currentAssessmentData.id}`);
-                }
-                localStorage.setItem('assessmentHistory', JSON.stringify(history));
-
-            } catch (saveError) {
-                console.error("[submitAssessment] 保存失败状态到 localStorage 时出错:", saveError);
-            }
-        } else {
-            console.error("[submitAssessment] 无法保存失败状态，currentAssessmentData 不存在。");
-        }
-        // **** 结束更新 ****
-
-        let errorMessage = '测评结果提交到云端失败！';
-        if (error.code && error.message) {
-            errorMessage += `\n错误 (${error.code}): ${error.message}`;
-        } else if (typeof error === 'string') {
-            errorMessage += `\n详情: ${error}`;
-        }
-        errorMessage += '\n\n您的测评进度已保存在本地，请稍后在"历史记录"页面检查并尝试重新提交。'; // 修改提示
-        alert(errorMessage);
-
-        // 在 catch 块中也恢复按钮状态
-        const submitBtn = document.getElementById('submitBtn'); // 确保 submitBtn 在此处可用
-        if (submitBtn) {
-            submitBtn.disabled = false;
-            submitBtn.innerHTML = '提交失败 (重试)'; // 更新按钮文本提示重试
-        }
+        hideLoading();
+        console.error('[submitAssessment] Error calling submitAssessmentCloud:', error);
+        alert("提交测评失败: " + error.message);
+        const submitBtn = document.getElementById('submitBtn');
+        if (submitBtn) submitBtn.disabled = false;
+        // **** 提交失败时，重新保存一下当前状态到本地 ****
+        saveStateToLocalStorage(); 
     }
 }
 
-// **** 修改：暂存测评 (增加云端同步) ****
-async function pauseAssessment() { // <-- Make the function async
-    console.log(`[pauseAssessment] Function start. currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`); // 添加日志
-    // 0. 禁用按钮，显示加载状态
-    const pauseBtn = document.getElementById('pauseBtn');
-    if (pauseBtn) {
-        pauseBtn.disabled = true;
-        pauseBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 暂存中...';
+// **** 修改：暂存测评 ****
+async function pauseAssessment() {
+    console.log(`[pauseAssessment] Function start...`);
+     if (!currentUser) {
+        alert("错误：用户未登录。");
+        showLoginModal();
+        return;
     }
+    const pauseBtn = document.getElementById('pauseBtn');
+    if (pauseBtn) { /* 禁用按钮 */ pauseBtn.disabled = true; pauseBtn.innerHTML = '...'; }
+    showLoading("正在暂存测评进度...");
 
-    // 1. 记录当前状态
     if (!currentAssessmentData) {
         console.error("无法暂存：没有当前的测评数据。");
         alert("没有正在进行的测评可以暂存。");
-        if (pauseBtn) { // Re-enable button on early exit
-            pauseBtn.disabled = false;
-            pauseBtn.innerHTML = '<i class="bi bi-pause-circle me-1"></i> 暂存测评';
-        }
+        hideLoading();
+        if (pauseBtn) { /* 恢复按钮 */ pauseBtn.disabled = false; pauseBtn.innerHTML = '...'; }
         return;
     }
     
-    // **** 保存最后一次答案和时间 ****
-    console.log(`[pauseAssessment] Calling saveCurrentAnswer(true). currentQuestionIndex=${currentQuestionIndex}`); // 添加日志
-    saveCurrentAnswer(true); // Save current state before pausing (isNavigating=true to skip validation if needed)
-    recordPreviousQuestionTime(); // Record time for the question before the current one
-
-    // **** 计算当前活动会话时长 ****
+    // ... (保存当前答案和时间)
+    saveCurrentAnswer(true);
+    recordPreviousQuestionTime();
+    // ... (计算当前会话时长和总时长)
     let currentSessionDurationSeconds = 0;
-    if (currentSessionStartTime) {
-        currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
-    } else {
-        console.warn("暂存时 currentSessionStartTime 为空，本次会话时长计为0。");
-    }
-    stopTimer(); // 停止计时器，清空 currentSessionStartTime
-
-    // **** 累加总活动时长 ****
+    if (currentSessionStartTime) currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
+    stopTimer();
     currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
-
-    // **** 计算总流逝时间 (用于记录暂停点) ****
     let elapsedSeconds = 0;
-    if (currentAssessmentData.startTime) {
-        const startTime = new Date(currentAssessmentData.startTime);
-        const now = new Date();
-        elapsedSeconds = Math.floor((now - startTime) / 1000);
-    } 
-
-    // 3. 更新测评数据状态 (本地副本)
+    if (currentAssessmentData.assessmentDate) elapsedSeconds = Math.floor((new Date() - new Date(currentAssessmentData.assessmentDate)) / 1000);
+    // ... (更新本地 currentAssessmentData 状态)
     currentAssessmentData.status = 'paused';
-    currentAssessmentData.elapsedSeconds = elapsedSeconds; // 保存总流逝时间
+    currentAssessmentData.elapsedSeconds = elapsedSeconds;
     currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
-    currentAssessmentData.timestamp = new Date().toISOString(); // 更新时间戳为暂存时间
-    // totalActiveSeconds 已经在上面更新过了
+    currentAssessmentData.timestamp = new Date().toISOString();
 
-    // **** 新增：调用云函数保存暂停状态 ****
-    let cloudSaveSuccess = false;
     try {
-        console.log("[pauseAssessment] Calling pauseAssessmentCloud cloud function...");
-        const cloudResultId = await AV.Cloud.run('pauseAssessmentCloud', { assessmentData: currentAssessmentData });
-        console.log("[pauseAssessment] Cloud function call successful. Returned ObjectId:", cloudResultId);
-        // 可选：如果云端保存成功，可以更新本地数据的 ID 为云端返回的 objectId，但这可能引起混淆，暂时不修改
-        // currentAssessmentData.cloudObjectId = cloudResultId; // 示例：添加云端ID
-        cloudSaveSuccess = true;
+        console.log("[pauseAssessment] Calling pauseAssessmentCloud...");
+        const dataToSend = { ...currentAssessmentData };
+        delete dataToSend.owner;
+
+        // **** 暂存时，确保本地状态也保存一次最新的 paused 状态 ****
+        saveStateToLocalStorage(); 
+
+        const savedObjectId = await AV.Cloud.run('pauseAssessmentCloud', { 
+            assessmentData: dataToSend,
+            assessmentObjectId: currentAssessmentData.objectId
+        });
+        currentAssessmentData.objectId = savedObjectId;
+        console.log(`[pauseAssessment] Pause successful. New/Updated ObjectId: ${savedObjectId}`);
+
+        // **** 暂存成功后，可以选择清除本地状态，或者保留以备网络问题 ****
+        // **** 这里选择保留本地状态，让下次加载时用户确认 ****
+        // localStorage.removeItem(LOCAL_STORAGE_KEY);
+        console.log("Local assessment state kept after successful pause.");
+
+        currentAssessmentData = null;
+        hideLoading();
+        alert("测评已暂存。");
+        window.location.href = 'index.html';
+
     } catch (error) {
-        console.error('[pauseAssessment] 调用云函数 pauseAssessmentCloud 时出错:', error);
-        let errorMessage = '将暂停状态同步到云端失败！';
-        if (error.code && error.message) {
-            errorMessage += `\n错误 (${error.code}): ${error.message}`;
-        } else if (typeof error === 'string') {
-            errorMessage += `\n详情: ${error}`;
-        }
-        errorMessage += '\n\n测评进度仍会保存在本地。';
-        alert(errorMessage);
-        // 即使云端失败，也继续本地保存
+        hideLoading();
+        console.error('[pauseAssessment] Error calling pauseAssessmentCloud:', error);
+        alert("暂存测评失败: " + error.message + "\n请稍后重试。");
+        // 恢复按钮状态
+        if (pauseBtn) { pauseBtn.disabled = false; pauseBtn.innerHTML = '...'; }
+        // 重新启动计时器
+        if (currentAssessmentData && currentAssessmentData.startTime) { // 使用 startTime 恢复
+             startTimer(new Date(currentAssessmentData.startTime), currentAssessmentData.totalActiveSeconds || 0);
+        } 
+        // **** 暂存失败时，确保本地状态是最新的 (因为 pauseAssessment 修改了 status) ****
+        saveStateToLocalStorage();
     }
-    // **** 云函数调用结束 ****
-
-    // 4. 保存到本地历史记录 (无论云端是否成功，都保存本地)
-    console.log("[pauseAssessment] Saving state to local storage history...");
-    const history = JSON.parse(localStorage.getItem('assessmentHistory') || '[]');
-    // 使用更新过的 currentAssessmentData 创建历史记录
-     const historyRecord = {
-        id: currentAssessmentData.id, // Keep original frontend ID for local consistency
-        userInfo: currentAssessmentData.userInfo, 
-        position: currentAssessmentData.position,
-        assessor: currentAssessmentData.assessor || null,
-        timestamp: currentAssessmentData.timestamp, // Use pause time
-        startTime: currentAssessmentData.startTime,
-        duration: Math.round((currentAssessmentData.totalActiveSeconds || 0) / 60),
-        score: { totalScore: null, maxScore: currentAssessmentData.maxScore || null, scoreRate: null },
-        questions: currentAssessmentData.questions,
-        answers: currentAssessmentData.answers,
-        status: 'paused', // Always paused for this function
-        elapsedSeconds: currentAssessmentData.elapsedSeconds,
-        currentQuestionIndex: currentAssessmentData.currentQuestionIndex,
-        totalActiveSeconds: currentAssessmentData.totalActiveSeconds,
-        // cloudObjectId: currentAssessmentData.cloudObjectId || null // 可选：包含云端ID
-    };
-
-    // 检查是否已存在相同 ID 的暂停记录，如果存在则替换，否则添加
-    const existingIndex = history.findIndex(item => item.id === historyRecord.id);
-    if (existingIndex > -1) {
-        history[existingIndex] = historyRecord; // Update existing paused record
-        console.log(`[pauseAssessment] Updated existing paused record in local history (ID: ${historyRecord.id}).`);
-    } else {
-        history.push(historyRecord); // Add as new paused record
-        console.log(`[pauseAssessment] Added new paused record to local history (ID: ${historyRecord.id}).`);
-    }
-    try {
-    localStorage.setItem('assessmentHistory', JSON.stringify(history));
-        console.log("[pauseAssessment] Local history saved successfully.");
-    } catch (e) {
-        console.error("[pauseAssessment] Error saving to local storage history:", e);
-        alert("保存测评进度到本地历史记录失败！请检查浏览器存储空间。"
-              + "\n错误: " + e.message);
-        // 如果本地保存失败，恢复按钮状态并停止
-        if (pauseBtn) {
-            pauseBtn.disabled = false;
-            pauseBtn.innerHTML = '<i class="bi bi-pause-circle me-1"></i> 暂存测评';
-        }
-        return;
-    }
-
-
-    // 5. 清除当前测评状态并重定向
-    console.log("[pauseAssessment] Removing current assessment state from local storage.");
-    localStorage.removeItem('currentAssessment');
-
-    // 根据云端保存结果显示不同提示
-    if (cloudSaveSuccess) {
-        alert("测评已暂存到本地和云端！");
-    } else {
-        alert("测评已暂存到本地（云端同步失败）。");
-    }
-
-    console.log("[pauseAssessment] Redirecting to history.html...");
-    window.location.href = 'history.html'; // Redirect to history page
-
-    // 注意：页面即将跳转，无需恢复按钮状态
 }
 
-// 启动计时器 (修改：记录会话开始时间)
-function startTimer(startTime, initialElapsedSeconds = 0) {
+// 启动计时器 (修改：使用 totalActiveSeconds 恢复)
+function startTimer(startTime, initialTotalActiveSeconds = 0) {
     if (timerInterval) {
         clearInterval(timerInterval);
     }
     const timerElement = document.getElementById('timer');
-    let elapsedSeconds = initialElapsedSeconds; 
+    let totalSeconds = initialTotalActiveSeconds; 
 
     // Immediately update timer display with initial time
-    const initialMinutes = Math.floor(elapsedSeconds / 60);
-    const initialSeconds = elapsedSeconds % 60;
+    const initialMinutes = Math.floor(totalSeconds / 60);
+    const initialSeconds = totalSeconds % 60;
     timerElement.textContent = `${String(initialMinutes).padStart(2, '0')}:${String(initialSeconds).padStart(2, '0')}`;
 
-    // **** 记录当前会话开始时间 ****
-    currentSessionStartTime = new Date(); 
+    currentSessionStartTime = new Date(); // 记录当前会话开始时间，用于增量计算
 
     timerInterval = setInterval(() => {
-        elapsedSeconds++; 
-        const minutes = Math.floor(elapsedSeconds / 60);
-        const seconds = elapsedSeconds % 60;
+        totalSeconds++; 
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = totalSeconds % 60;
         timerElement.textContent = `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        // **** 定时保存状态 (例如每分钟) ****
+        if (totalSeconds % 60 === 0) { 
+            saveStateToLocalStorage();
+        }
     }, 1000);
 }
 
-// 停止计时器 (修改：清空会话开始时间)
+// 停止计时器 (修改：累加最后一段会话时长)
 function stopTimer() {
     if (timerInterval) {
         clearInterval(timerInterval);
         timerInterval = null;
     }
-    // **** 清空会话开始时间 ****
-    currentSessionStartTime = null; 
+    // **** 停止计时器时，计算并累加最后一段会话时长 ****
+    if (currentAssessmentData && currentSessionStartTime) {
+         let finalSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
+         currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + finalSessionDurationSeconds;
+         console.log(`Timer stopped. Added ${finalSessionDurationSeconds}s to totalActiveSeconds. New total: ${currentAssessmentData.totalActiveSeconds}`);
+         // 不需要在这里保存到 localStorage，调用 stopTimer 的地方 (submit/pause) 会处理保存
+    }
+    currentSessionStartTime = null; // 清空会话开始时间
 }
 
 // **** 添加 formatAnswerContent 函数（如果 assessment.js 中没有） ****
@@ -1296,61 +1451,10 @@ function showQuestion(index) {
     console.log(`[showQuestion] Successfully switched to question index ${currentQuestionIndex}`); // 添加日志
 }
 
-// **** 新增：在页面隐藏/离开时自动保存进行中的测评状态 ****
-window.addEventListener('pagehide', function(event) {
-    // 检查是否有正在进行的测评数据，并且状态是 'in_progress'
-    if (currentAssessmentData && currentAssessmentData.status === 'in_progress') {
-        console.log('[pagehide] Detected active assessment. Preparing to save state...');
+// **** 辅助函数：生成唯一ID (修改为返回数字) ****
+function generateFrontendId() {
+    return Date.now(); // **** 返回毫秒时间戳 (数字) ****
+}
 
-        // 1. 保存当前题目的答案和评论 (允许未评分)
-        saveCurrentAnswer(true); 
-        // 2. 记录当前题目的用时 (如果需要精确累计)
-        recordPreviousQuestionTime(); 
-
-        // 3. 更新 currentAssessmentData 中的关键状态
-        // **** 重要：确保这里使用的是当前的全局 currentQuestionIndex ****
-        currentAssessmentData.currentQuestionIndex = currentQuestionIndex; 
-
-        // 4. 计算并更新时间
-        // ... (时间计算逻辑保持不变) ...
-        let currentSessionDurationSeconds = 0;
-        if (currentSessionStartTime) {
-            currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
-        }
-        currentAssessmentData.totalActiveSeconds = (currentAssessmentData.totalActiveSeconds || 0) + currentSessionDurationSeconds;
-        let elapsedSeconds = 0;
-        if (currentAssessmentData.startTime) {
-            const startTime = new Date(currentAssessmentData.startTime);
-            const now = new Date();
-            elapsedSeconds = Math.floor((now - startTime) / 1000);
-        }
-        currentAssessmentData.elapsedSeconds = elapsedSeconds;
-
-        // 5. 将更新后的数据保存到 localStorage
-        try {
-            // **** 添加详细日志：在保存前打印关键状态 ****
-            console.log(`[pagehide] --- Saving State ---`);
-            console.log(`[pagehide] currentQuestionIndex to be saved: ${currentAssessmentData.currentQuestionIndex}`);
-            // 确保 currentAssessmentData.questions 存在再访问 length
-            const questionsLength = currentAssessmentData.questions ? currentAssessmentData.questions.length : 'undefined';
-            console.log(`[pagehide] currentQuestions.length to be saved: ${questionsLength}`);
-            // 可以选择性打印整个对象，但可能很大
-            // console.log('[pagehide] Full data being saved:', JSON.stringify(currentAssessmentData)); 
-            
-            localStorage.setItem('currentAssessment', JSON.stringify(currentAssessmentData));
-            console.log('[pagehide] Assessment state saved to localStorage.');
-        } catch (e) {
-            console.error('[pagehide] Error saving assessment state to localStorage:', e);
-        }
-        // 注意：这里不需要停止计时器或清除 currentSessionStartTime，因为页面即将卸载
-    } else {
-        console.log('[pagehide] No active assessment found or status is not in_progress. No state saved.');
-    }
-});
-// **** 自动保存逻辑结束 ****
-
-// 获取随机题目
-function getRandomQuestions(questions, count) {
-    const shuffled = [...questions].sort(() => 0.5 - Math.random());
-    return shuffled.slice(0, count);
-} 
+// **** 移除 pagehide 事件监听器，改用 beforeunload ****
+// window.addEventListener('pagehide', function(event) { ... }); 
