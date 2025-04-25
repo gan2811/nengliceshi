@@ -57,6 +57,23 @@
                  margin-left: 0; /* Remove left margin when stacked */
             } 
         }
+
+        /* **** 新增：尝试优化 PDF 分页 **** */
+        @media print {
+            /* Apply to the cards generated for the PDF analysis report */
+            .analysis-report-card {
+                page-break-inside: avoid !important;
+            }
+            /* Apply to the whole analysis container if needed */
+            .analysis-report-container {
+                 page-break-inside: avoid !important; 
+            }
+             /* General good practice for printing tables */
+            table, tr, td, th, tbody, thead, tfoot {
+                page-break-inside: avoid !important;
+            }
+        }
+        /* **** 结束新增 **** */
     </style>
 </head>
 <body>
@@ -276,6 +293,10 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script>
+    <!-- **** 新增：引入 PDF 导出库 **** -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <!-- **** 结束新增 **** -->
     <script src="js/main.js"></script>
     <script src="js/history.js"></script>
 </body>

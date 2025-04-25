@@ -627,8 +627,11 @@ function setupPagination(totalItems, currentPage) {
 // **** 修改：查看详情 (处理云端数据) ****
 async function viewDetail(assessmentId) {
     const detailModalBody = document.getElementById('detailModalBody');
-    detailModalBody.innerHTML = '<p class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 加载详情中...</p>';
-    // Ensure modal exists before trying to show
+    // **** 新增: 存储 assessmentId 到 modal body 的 dataset ****
+    detailModalBody.dataset.assessmentId = assessmentId;
+    
+    detailModalBody.innerHTML = '<div id="detailModalContentToExport"><p class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 加载详情中...</p></div>';
+    
     const detailModalElement = document.getElementById('detailModal');
     if (!detailModalElement) {
         console.error("Detail modal element not found!");
@@ -655,11 +658,13 @@ async function viewDetail(assessmentId) {
 
         // 构建详情 HTML
         let htmlContent = buildDetailHtml(assessment, details);
-        detailModalBody.innerHTML = htmlContent;
+        // **** 修改: 将内容放入带有 ID 的 div 中 ****
+        detailModalBody.innerHTML = `<div id="detailModalContentToExport">${htmlContent}</div>`;
 
     } catch (error) {
         console.error("加载详情失败:", error);
-        detailModalBody.innerHTML = `<p class="text-danger text-center">加载详情失败: ${error.message || '未知错误'}</p>`;
+        // **** 修改: 错误信息也放入带有 ID 的 div 中 ****
+        detailModalBody.innerHTML = `<div id="detailModalContentToExport"><p class="text-danger text-center">加载详情失败: ${error.message || '未知错误'}</p></div>`;
     }
 }
 
@@ -725,7 +730,11 @@ function buildDetailHtml(assessment, details) {
           if (minutes !== undefined && minutes !== null) durationText = `${minutes}分钟`;
      }
 
+    // **** 新增：添加居中的"测评总览"标题 ****
+    let headerHtml = `<h5 class="text-center text-primary mb-3"><i class="bi bi-clipboard-check me-2"></i>测评总览</h5>`;
+
     let tableHtml = `
+        <h5 class="text-center text-primary mb-3"><i class="bi bi-clipboard-check me-2"></i>测评总览</h5>
         <h6>基本信息</h6>
         <div class="row mb-3">
             <div class="col-md-6"><strong>姓名:</strong> ${name}</div>
@@ -790,6 +799,22 @@ function buildDetailHtml(assessment, details) {
     }
 
     tableHtml += `</tbody></table>`;
+    
+    // **** 新增：在返回的 HTML 中确保按钮调用 exportDetail() ****
+    // (这里假设模态框的 footer 是在别处定义的或者需要在这里动态添加)
+    // 如果 footer 是固定的，只需确保按钮的 onclick='exportDetail()'
+    // 如果需要在 buildDetailHtml 中生成整个 modal content 包括 footer:
+    /*
+    let footerHtml = `
+        <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+            <button type="button" class="btn btn-primary" onclick="exportDetail()">导出</button>
+        </div>
+    `;
+    return tableHtml + footerHtml; // Append footer if generated here
+    */
+   
+    // 仅返回表格内容，假设 footer 在 history.html 中且按钮已设置 onclick="exportDetail()"
     return tableHtml;
 }
 
@@ -1313,10 +1338,32 @@ function getStationName(stationCode) {
      return stationMap[stationCode] || stationCode || '未知';
  }
 function getPositionName(positionCode) {
-     const positionMap = { 'duty_station': '值班站长', 'station_duty': '车站值班员', 'station_safety': '站务安全员' };
-     if (['值班站长', '车站值班员', '站务安全员'].includes(positionCode)) return positionCode;
-     return positionMap[positionCode] || positionCode || '未知';
- }
+     // **** 从 analysis.js 合并查找逻辑 ****
+     // 1. Check standard code map
+     const positionMap = { 
+         'duty_station': '值班站长', 
+         'station_duty': '车站值班员', 
+         'station_safety': '站务安全员',
+         // Add other known codes here
+         'ticketing_clerk': '票务员' // Example added
+     };
+     if (positionMap[positionCode]) {
+         return positionMap[positionCode];
+     }
+     // 2. Check if the code itself is a known name
+     if (['值班站长', '车站值班员', '站务安全员', '票务员'].includes(positionCode)) {
+         return positionCode;
+     }
+     // 3. Fallback: try finding in the globally loaded allPositions (if available)
+     if (typeof allPositions !== 'undefined' && Array.isArray(allPositions)) {
+         const posObj = allPositions.find(p => p.code === positionCode);
+         if (posObj && posObj.name) {
+             return posObj.name;
+         }
+     }
+     // 4. Final fallback
+     return positionCode || '未知';
+}
 function formatDate(dateInput, includeTime = false) {
     let dateObject;
     if (dateInput instanceof Date) {
@@ -1779,3 +1826,562 @@ async function findOrCreatePosition(positionCode) {
         }
     }
 }
+
+// **** 新增：导出详情为 PDF 的函数 ****
+async function exportDetail() {
+    const detailModalBody = document.getElementById('detailModalBody'); // Get the modal body
+    const exportButton = document.querySelector('#detailModal .modal-footer button[onclick^="exportDetail"]');
+    
+    if (!detailModalBody) {
+        console.error("无法找到详情模态框内容区域 (detailModalBody)!");
+        alert("导出错误：无法找到内容区域。");
+        return;
+    }
+
+    // Find the content div *within* the modal body
+    let contentElement = document.getElementById('detailModalContentToExport');
+    if (!contentElement) {
+        console.error("无法找到要导出的内容元素 (#detailModalContentToExport)!");
+        alert("导出错误：无法找到内容。");
+        return;
+    }
+    
+    if (!window.jspdf || !window.html2canvas) {
+         console.error("jsPDF or html2canvas library not loaded!");
+         alert("导出错误：所需库未加载，请检查网络连接或联系管理员。");
+         return;
+    }
+    
+    if (exportButton) exportButton.disabled = true;
+    const originalButtonText = exportButton ? exportButton.innerHTML : '';
+    if (exportButton) exportButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 生成中...';
+
+    try {
+        // --- 1. 获取当前显示的 Assessment 数据 (需要从 DOM 或 内存 获取) ---
+        // **重要:** 我们需要获取与当前模态框内容对应的 assessment 数据。
+        // 最好的方式是让 viewDetail 查询后，将 assessment 和 details 存到某个全局变量或传递给 exportDetail。
+        // 假设 viewDetail 将其存到了全局变量 `currentDetailData`
+        // let currentRecordData = window.currentDetailDataForExport; // Example global variable
+        // **临时方案: 尝试从 DOM 中提取 assessment ID 再重新查询** 
+        // (效率较低，但避免修改 viewDetail 传递数据)
+        let currentRecordData = null;
+        // We need the assessment ID. How to get it here? 
+        // Option 1: Add it as a data attribute to the modal or contentElement when viewDetail runs.
+        // Option 2: Parse it from somewhere in the existing contentElement HTML (less reliable).
+        // Let's assume we can get assessmentId somehow (e.g., from a data attribute on the button or modal)
+        const assessmentId = detailModalBody.dataset.assessmentId; // Needs viewDetail to set this: detailModalBody.dataset.assessmentId = assessmentId;
+        
+        if (!assessmentId) {
+             console.error("无法获取当前详情记录的 Assessment ID!");
+             throw new Error("无法确定要分析的记录 ID。");
+        }
+        
+        console.log(`[exportDetail] Re-fetching data for Assessment ID: ${assessmentId}`);
+        const query = new AV.Query('Assessment');
+        query.include('userPointer');
+        query.include('userPointer.positionPointer');
+        query.include('userPointer.stationPointer');
+        const assessment = await query.get(assessmentId);
+
+        const detailQuery = new AV.Query('AssessmentDetail');
+        detailQuery.equalTo('assessmentPointer', assessment);
+        detailQuery.limit(1000);
+        const details = await detailQuery.find();
+        
+        // Reconstruct the record object needed by analysis functions
+        currentRecordData = {
+            id: assessment.id,
+            userInfo: assessment.get('userPointer')?.attributes, // Get attributes
+            position: assessment.get('userPointer')?.get('positionPointer')?.get('positionName'), // Adjust based on actual structure
+            assessor: assessment.get('assessorName'),
+            timestamp: assessment.get('endTime')?.toISOString(),
+            startTime: assessment.get('startTime')?.toISOString(),
+            duration: assessment.get('durationMinutes'),
+            score: {
+                totalScore: assessment.get('totalScore'),
+                maxScore: assessment.get('maxPossibleScore'),
+                scoreRate: assessment.get('scoreRate'),
+            },
+            questions: details.map(d => ({ // Ensure all needed fields are here
+                 id: d.get('questionId'),
+                 content: d.get('questionContent'),
+                 standardScore: d.get('standardScore'),
+                 standardAnswer: d.get('standardAnswer'), // Might need parsing if object
+                 section: d.get('section'),
+                 type: d.get('type'),
+                 knowledgeSource: d.get('knowledgeSource')
+            })),
+            answers: details.reduce((acc, d) => {
+                const qId = d.get('questionId');
+                acc[qId] = {
+                    score: d.get('score'),
+                    comment: d.get('comment'),
+                    duration: d.get('durationSeconds'),
+                };
+                return acc;
+            }, {}),
+            status: assessment.get('status'),
+            totalActiveSeconds: assessment.get('totalActiveSeconds'),
+            // ... add any other fields needed by analysis functions ...
+        };
+        // console.log("Data for analysis:", currentRecordData);
+
+        if (!currentRecordData) {
+            throw new Error("无法获取生成分析报告所需的数据。");
+        }
+
+        // --- 2. 生成分析报告 HTML ---
+        console.log("Generating analysis HTML...");
+        const analysisHtml = buildAnalysisHtmlForPdf(currentRecordData);
+        // console.log("Analysis HTML:", analysisHtml);
+
+        // --- 3. 追加 HTML 到待导出内容 --- 
+        // Ensure contentElement is the correct container
+        contentElement.innerHTML += analysisHtml; // Append the analysis
+        console.log("Appended analysis HTML to content for export.");
+
+        // --- 4. 执行截图和 PDF 生成 (代码来自之前) ---
+        const { jsPDF } = window.jspdf; 
+        console.log("Starting html2canvas capture...");
+        const canvas = await html2canvas(contentElement, { scale: 2, useCORS: true, logging: true }); // Enable logging
+        console.log("html2canvas capture finished.");
+        const imgData = canvas.toDataURL('image/png');
+
+        const imgWidthOrig = canvas.width / 2; 
+        const imgHeightOrig = canvas.height / 2; 
+
+        const pdfWidth = 595.28;
+        const pdfHeight = 841.89;
+        const margin = 40; 
+        const contentWidth = pdfWidth - margin * 2;
+        const contentHeight = pdfHeight - margin * 2;
+
+        const scaleRatio = contentWidth / imgWidthOrig;
+        const imgWidthScaled = contentWidth;
+        const imgHeightScaled = imgHeightOrig * scaleRatio;
+
+        const pdf = new jsPDF('p', 'pt', 'a4');
+        let positionY = margin; 
+
+        if (imgHeightScaled <= contentHeight) {
+            pdf.addImage(imgData, 'PNG', margin, positionY, imgWidthScaled, imgHeightScaled);
+            console.log("Added single page image to PDF.");
+        } else {
+            console.log("Image too tall, splitting into multiple pages...");
+            let remainingHeight = imgHeightOrig;
+            let ySlicePosition = 0;
+            const sliceScale = 2; 
+            
+            while (remainingHeight > 0) {
+                const sliceHeightOrig = Math.min(remainingHeight, contentHeight / scaleRatio);
+                const sliceCanvas = document.createElement('canvas');
+                sliceCanvas.width = canvas.width;
+                sliceCanvas.height = sliceHeightOrig * sliceScale;
+                const sliceCtx = sliceCanvas.getContext('2d');
+                sliceCtx.drawImage(canvas, 0, ySlicePosition * sliceScale, canvas.width, sliceHeightOrig * sliceScale, 0, 0, canvas.width, sliceHeightOrig * sliceScale);
+
+                const sliceImgData = sliceCanvas.toDataURL('image/png');
+                const sliceImgHeightScaled = sliceHeightOrig * scaleRatio;
+
+                pdf.addImage(sliceImgData, 'PNG', margin, positionY, imgWidthScaled, sliceImgHeightScaled);
+                console.log(`Added page slice, height: ${sliceHeightOrig.toFixed(1)}orig / ${sliceImgHeightScaled.toFixed(1)}scaled`);
+
+                remainingHeight -= sliceHeightOrig;
+                ySlicePosition += sliceHeightOrig;
+
+                if (remainingHeight > 0) {
+                    pdf.addPage();
+                    positionY = margin;
+                    console.log("Added new page.");
+                }
+            }
+        }
+
+        // --- Generate filename (code from before) ---
+        let filename = '测评详情及分析.pdf'; // Modified default name
+        try {
+            const userName = assessment.get('userPointer')?.get('name') || '未知用户';
+            const completionDateInput = assessment.get('startTime'); // **** 修改：使用 startTime **** // Get the raw input
+            let dateStr = 'YYYYMMDD';
+            let dateObject = null;
+
+            // Attempt to get a valid Date object
+            if (completionDateInput instanceof Date) {
+                dateObject = completionDateInput;
+            } else if (typeof completionDateInput === 'string') {
+                dateObject = new Date(completionDateInput); // Try parsing the string
+            }
+
+            // Check if we have a valid Date object now
+            if (dateObject && !isNaN(dateObject.getTime())) {
+                const year = dateObject.getFullYear();
+                const month = (dateObject.getMonth() + 1).toString().padStart(2, '0');
+                const day = dateObject.getDate().toString().padStart(2, '0');
+                dateStr = `${year}${month}${day}`;
+            } else {
+                 console.warn("Could not get valid completion date for filename from input:", completionDateInput);
+            }
+
+            // Sanitize userName by removing characters not suitable for filenames
+            const sanitizedName = userName.replace(/[\/:*?"<>|]/g, '_'); 
+            filename = `测评详情及分析-${sanitizedName}-${dateStr}.pdf`;
+        } catch (e) {
+            console.error("Error generating filename from assessment data:", e);
+            // Fallback to default filename if error occurs
+            filename = '测评详情及分析.pdf';
+        }
+        
+        console.log(`Saving PDF as: ${filename}`);
+        pdf.save(filename);
+        console.log("PDF save initiated.");
+
+    } catch (error) {
+        console.error("导出 PDF 失败:", error);
+        alert(`导出失败: ${error.message || '未知错误'}`);
+    } finally {
+         // --- 5. 清理追加的 HTML (重要!) ---
+         const appendedAnalysis = contentElement.querySelector('.analysis-report-for-pdf'); // Needs a class added to the analysis container
+         if (appendedAnalysis) {
+             // console.log("Removing appended analysis HTML from modal content...");
+             // contentElement.removeChild(appendedAnalysis);
+             // Or simply reload the original content if viewDetail can be recalled easily?
+             // Simplest: Just don't remove, the modal will be re-rendered next time anyway.
+         }
+         
+         if (exportButton) {
+             exportButton.disabled = false; 
+             exportButton.innerHTML = originalButtonText; 
+         } 
+         console.log("Export process finished.");
+    }
+}
+
+// **** 修改：viewDetail 以存储 assessmentId ****
+async function viewDetail(assessmentId) {
+    const detailModalBody = document.getElementById('detailModalBody');
+    // **** 新增: 存储 assessmentId 到 modal body 的 dataset ****
+    detailModalBody.dataset.assessmentId = assessmentId;
+    
+    detailModalBody.innerHTML = '<div id="detailModalContentToExport"><p class="text-center"><span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 加载详情中...</p></div>';
+    
+    const detailModalElement = document.getElementById('detailModal');
+    if (!detailModalElement) {
+        console.error("Detail modal element not found!");
+        detailModalBody.innerHTML = '<p class="text-danger text-center">错误：详情模态框未找到。</p>';
+            return;
+        }
+    const detailModal = new bootstrap.Modal(detailModalElement);
+    detailModal.show();
+
+    try {
+        // 直接从云端查询，不依赖 currentCloudAssessment 或内存中的数据
+        const query = new AV.Query('Assessment');
+        query.include('userPointer');
+        // **** 新增：包含 UserProfile 关联的指针 ****
+        query.include('userPointer.positionPointer');
+        query.include('userPointer.stationPointer');
+        const assessment = await query.get(assessmentId);
+
+        // 查询关联的 AssessmentDetail
+        const detailQuery = new AV.Query('AssessmentDetail');
+        detailQuery.equalTo('assessmentPointer', assessment);
+        detailQuery.limit(1000); // Assume max 1000 questions per assessment
+        const details = await detailQuery.find();
+
+        // 构建详情 HTML
+        let htmlContent = buildDetailHtml(assessment, details);
+        // **** 修改: 将内容放入带有 ID 的 div 中 ****
+        detailModalBody.innerHTML = `<div id="detailModalContentToExport">${htmlContent}</div>`;
+
+    } catch (error) {
+        console.error("加载详情失败:", error);
+        // **** 修改: 错误信息也放入带有 ID 的 div 中 ****
+        detailModalBody.innerHTML = `<div id="detailModalContentToExport"><p class="text-danger text-center">加载详情失败: ${error.message || '未知错误'}</p></div>`;
+    }
+}
+
+// **** ------------------------------------------ ****
+// **** START: Functions copied/adapted from analysis.js for PDF export ****
+// **** ------------------------------------------ ****
+
+// Calculates performance per section for a single assessment record
+function calculateIndividualSectionPerformance(record) {
+    if (!record || !record.questions || !record.answers) {
+        console.warn("[calculateIndividualSectionPerformance] Invalid record data provided.");
+        return { sections: {}, totalAchieved: 0, totalPossible: 0 };
+    }
+
+    const sections = {};
+    let totalAchieved = 0;
+    let totalPossible = 0;
+
+    record.questions.forEach(question => {
+        const section = question.section || '未分类'; // Default section if missing
+        const answer = record.answers[question.id];
+        const score = answer ? (answer.score ?? 0) : 0;
+        const standardScore = question.standardScore ?? 0;
+
+        if (!sections[section]) {
+            sections[section] = { achieved: 0, possible: 0, count: 0 };
+        }
+
+        sections[section].achieved += score;
+        sections[section].possible += standardScore;
+        sections[section].count++;
+        totalAchieved += score;
+        totalPossible += standardScore;
+    });
+
+    // Calculate mastery rate for each section
+    for (const sectionName in sections) {
+        const sectionData = sections[sectionName];
+        sectionData.masteryRate = sectionData.possible > 0
+            ? parseFloat(((sectionData.achieved / sectionData.possible) * 100).toFixed(1))
+            : 0;
+    }
+    
+    // Sort sections alphabetically for consistent display
+    const sortedSections = Object.entries(sections)
+                             .sort(([,a], [,b]) => a.sectionName?.localeCompare(b.sectionName || ''))
+                             .reduce((obj, [key, value]) => {
+                                 obj[key] = value;
+                                 return obj;
+                             }, {});
+
+
+    return {
+        sections: sortedSections, // Use sorted sections
+        totalAchieved: totalAchieved,
+        totalPossible: totalPossible,
+        overallMasteryRate: totalPossible > 0 
+            ? parseFloat(((totalAchieved / totalPossible) * 100).toFixed(1))
+            : 0
+    };
+}
+
+// Calculates best/worst questions for a single record
+function calculateIndividualQuestionPerformance(record) {
+    if (!record || !record.questions || !record.answers) {
+        console.warn("[calculateIndividualQuestionPerformance] Invalid record data provided.");
+        return { best: [], worst: [], other: [] };
+    }
+
+    const questions = record.questions.map(q => {
+        const answer = record.answers[q.id];
+        const score = answer ? (answer.score ?? null) : null;
+        const standardScore = q.standardScore ?? 0;
+        const scoreRate = (standardScore > 0 && score !== null) 
+                          ? parseFloat(((score / standardScore) * 100).toFixed(1)) 
+                          : (score === null ? null : 0); // Rate is null if not scored
+        return {
+            id: q.id,
+            content: q.content,
+            score: score,
+            standardScore: standardScore,
+            scoreRate: scoreRate,
+            section: q.section || '未分类',
+            comment: answer?.comment || ''
+        };
+    }).filter(q => q.score !== null); // Only consider scored questions
+
+    const calculateRate = (q) => {
+         if (q.score === null || q.score === undefined) return -1; // Treat unscored as lowest
+         return q.standardScore > 0 ? (q.score / q.standardScore) : 0;
+    };
+    
+    questions.sort((a, b) => calculateRate(b) - calculateRate(a)); // Sort descending by rate
+
+    const threshold = 60; // **** 修改：阈值改为 60 **** // Example threshold for "well mastered"
+    const best = questions.filter(q => q.scoreRate !== null && q.scoreRate >= threshold);
+    const worst = questions.filter(q => q.scoreRate !== null && q.scoreRate < threshold);
+
+    return {
+        best: best,
+        worst: worst,
+        other: [] // We are not using 'other' category here
+    };
+}
+
+// Generates training suggestions based on a single record
+function generateIndividualTrainingSuggestions(record) {
+     if (!record || !record.questions || !record.answers) {
+        console.warn("[generateIndividualTrainingSuggestions] Invalid record data provided.");
+        return { sectionSuggestions: [], questionSuggestions: [], overallSuggestion: '' };
+    }
+
+    const performance = calculateIndividualSectionPerformance(record);
+    const questionPerformance = calculateIndividualQuestionPerformance(record);
+    const lowScoreThresholdRate = 60; // Score rate below 60% is considered weak
+    const suggestions = {
+        sectionSuggestions: [], // Suggestions based on weak sections
+        questionSuggestions: [], // Suggestions based on specific weak questions
+        overallSuggestion: '' // Overall assessment comment
+    };
+
+    // 1. Section-based Suggestions
+    const weakSections = Object.entries(performance.sections)
+                               .filter(([_, data]) => data.masteryRate < lowScoreThresholdRate)
+                               .sort(([,a], [,b]) => a.masteryRate - b.masteryRate); // Sort weakest first
+
+    weakSections.forEach(([sectionName, data]) => {
+        suggestions.sectionSuggestions.push(
+            `<strong>重点关注板块：</strong> ${sectionName} (${data.masteryRate.toFixed(1)}%)，掌握程度严重不足，建议安排<strong class="text-danger">系统性培训和专项辅导</strong>。`
+        );
+    });
+
+    // 2. Question-based Suggestions (focus on worst performing)
+    const weakQuestions = questionPerformance.worst
+                                .filter(q => q.scoreRate !== null && q.scoreRate < lowScoreThresholdRate)
+                                .sort((a, b) => a.scoreRate - b.scoreRate); // Sort worst first
+
+    if (weakQuestions.length > 0) {
+         let questionListHtml = '<ul class="list-unstyled mb-0">';
+         weakQuestions.slice(0, 5).forEach(q => { // Limit to top 5 worst
+             questionListHtml += `<li>${q.content} <span class="badge bg-danger">${q.score}/${q.standardScore}</span></li>`;
+         });
+         questionListHtml += '</ul>';
+         suggestions.questionSuggestions.push(
+             `<strong>掌握薄弱题目：</strong> 以下题目得分低于 60% 或未作答，请重点关注：${questionListHtml} 建议<strong class="text-danger">查找相关资料重点复习</strong>。`
+         );
+    }
+
+    // 3. Overall Suggestion
+    const overallRate = performance.overallMasteryRate;
+    if (overallRate < 60) {
+        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) <strong class="text-danger">偏低</strong>，基础知识和核心技能掌握不足。`;
+    } else if (overallRate < 85) {
+        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) 良好，但仍有提升空间，部分知识点掌握不够牢固。`;
+    } else {
+        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) 优秀，基础知识和核心技能掌握较好。`;
+    }
+    
+    // 4. General Learning Suggestion
+    suggestions.learningSuggestion = `<strong>学习建议：</strong> 必须<strong class="text-danger">必须系统复习</strong>，对照教材/手册，逐一攻克薄弱点，多向同事或师傅请教，增加实操练习。`;
+
+    return suggestions;
+}
+
+// **** 新增：构建分析报告的 HTML (用于 PDF) ****
+function buildAnalysisHtmlForPdf(record) {
+     if (!record) return '';
+
+    const threshold = 60; // **** 新增：在这里定义阈值，使其在函数内可用 ****
+
+    const sectionPerformance = calculateIndividualSectionPerformance(record);
+    const questionPerformance = calculateIndividualQuestionPerformance(record);
+    const suggestions = generateIndividualTrainingSuggestions(record);
+
+    // --- 1. 模块得分分布 (模拟 analysis.html 的卡片结构) ---
+    let sectionHtml = '';
+    // **** 添加 analysis-report-card 类用于 CSS 控制分页 ****
+    sectionHtml += '<div class="card analysis-report-card shadow-sm mb-4">'; 
+    // **** 添加 text-dark 提高对比度 ****
+    sectionHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-pie-chart-fill me-2"></i>模块得分分布</div>'; 
+    sectionHtml += '  <div class="card-body">';
+    sectionHtml += '    <div class="row text-center g-3">'; // Use grid gap
+    const sectionEntries = Object.entries(sectionPerformance.sections);
+    if (sectionEntries.length > 0) {
+        sectionEntries.forEach(([sectionName, data]) => {
+            const colorClass = data.masteryRate >= 85 ? 'text-success' : (data.masteryRate >= 60 ? 'text-warning' : 'text-danger');
+            sectionHtml += `
+                <div class="col-md-4 col-sm-6">
+                    <div class="border rounded p-2 h-100 d-flex flex-column justify-content-center align-items-center">
+                        <h6 class="mb-1 text-primary">${sectionName}</h6>
+                        <p class="mb-0 small">得分: ${data.achieved} / ${data.possible}</p>
+                        <p class="fw-bold ${colorClass} mb-0">掌握率: ${data.masteryRate.toFixed(1)}%</p>
+                    </div>
+                </div>`;
+        });
+    } else {
+        sectionHtml += '<p class="text-muted">无模块得分数据。</p>';
+    }
+    sectionHtml += '    </div>'; // end row
+    sectionHtml += '  </div>'; // end card-body
+    sectionHtml += '</div>'; // end card
+
+    // **** 新增：在板块之间添加视觉分隔线 ****
+    sectionHtml += '<hr class="my-3" style="border-top: 1px dashed #ccc; background-color: transparent;">'; 
+
+    // --- 2. 题目掌握情况 --- 
+    let masteryHtml = '';
+    // **** 添加 analysis-report-card 类 ****
+    masteryHtml += '<div class="card analysis-report-card shadow-sm mb-4">'; 
+    // **** 添加 text-dark ****
+    masteryHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-list-check me-2"></i>题目掌握情况</div>'; 
+    masteryHtml += '  <div class="card-body">';
+    // Well Mastered Questions
+    masteryHtml += `    <h6 class="text-success"><i class="bi bi-check-circle-fill me-1"></i>掌握较好题目 (得分 >= ${threshold}%)</h6>`; // Use threshold variable
+    if (questionPerformance.best.length > 0) {
+        masteryHtml += '    <ul class="list-group list-group-flush mb-3">';
+        questionPerformance.best.forEach(q => {
+            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-success float-end">${q.score}/${q.standardScore}</span></li>`;
+        });
+        masteryHtml += '    </ul>';
+    } else {
+        masteryHtml += '    <p class="text-muted ms-3">无相关题目</p>';
+    }
+    // Weak Questions
+    masteryHtml += `    <h6 class="text-danger mt-3"><i class="bi bi-exclamation-triangle-fill me-1"></i>待提高题目 (得分 < ${threshold}%)</h6>`; // Use threshold variable
+    if (questionPerformance.worst.length > 0) {
+        masteryHtml += '    <ul class="list-group list-group-flush">';
+        questionPerformance.worst.forEach(q => {
+            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-danger float-end">${q.score}/${q.standardScore}</span></li>`;
+        });
+        masteryHtml += '    </ul>';
+    } else {
+        masteryHtml += '    <p class="text-muted ms-3">无相关题目</p>';
+    }
+    masteryHtml += '  </div>'; // end card-body
+    masteryHtml += '</div>'; // end card
+
+    // **** 新增：在板块之间添加视觉分隔线 ****
+    masteryHtml += '<hr class="my-3" style="border-top: 1px dashed #ccc; background-color: transparent;">';
+
+    // --- 3. 个人培训建议 ---
+    let suggestionHtml = '';
+    // **** 添加 analysis-report-card 类 ****
+    suggestionHtml += '<div class="card analysis-report-card shadow-sm">'; 
+    // **** 添加 text-dark ****
+    suggestionHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-person-video3 me-2"></i>个人培训建议</div>'; 
+    suggestionHtml += '  <div class="card-body">';
+    suggestionHtml += '    <ul class="list-group list-group-flush">';
+    if (suggestions.sectionSuggestions.length > 0) {
+        suggestions.sectionSuggestions.forEach(s => {
+            suggestionHtml += `<li class="list-group-item"><i class="bi bi-exclamation-diamond-fill text-danger me-2"></i>${s}</li>`;
+        });
+    }
+    if (suggestions.questionSuggestions.length > 0) {
+         suggestions.questionSuggestions.forEach(s => {
+            suggestionHtml += `<li class="list-group-item"><i class="bi bi-clipboard-minus text-warning me-2"></i>${s}</li>`;
+        });
+    }
+    if (suggestions.overallSuggestion) {
+        suggestionHtml += `<li class="list-group-item"><i class="bi bi-clipboard-data text-info me-2"></i>${suggestions.overallSuggestion}</li>`;
+    }
+     if (suggestions.learningSuggestion) {
+        suggestionHtml += `<li class="list-group-item"><i class="bi bi-book text-primary me-2"></i>${suggestions.learningSuggestion}</li>`;
+    }
+    if (suggestions.sectionSuggestions.length === 0 && suggestions.questionSuggestions.length === 0) {
+         suggestionHtml += '<li class="list-group-item text-muted">暂无具体薄弱项建议。</li>';
+    }
+    suggestionHtml += '    </ul>';
+    suggestionHtml += '  </div>'; // end card-body
+    suggestionHtml += '</div>'; // end card
+
+    // Combine all parts with a header
+    // **** 添加 analysis-report-container 类 ****
+    let finalHtml = '<div class="analysis-report-container">'; // Wrap the whole report
+    finalHtml += '<hr class="my-4">'; // Separator
+    finalHtml += '<h5 class="mb-3 text-center text-primary"><i class="bi bi-clipboard2-pulse-fill me-2"></i>个人分析报告</h5>';
+    finalHtml += sectionHtml; // Already includes its trailing HR
+    finalHtml += masteryHtml; // Already includes its trailing HR
+    finalHtml += suggestionHtml;
+    finalHtml += '</div>'; // Close the wrapper div
+
+    return finalHtml;
+}
+
+
+// **** ------------------------------------------ ****
+// **** END: Functions copied/adapted from analysis.js ****
+// **** ------------------------------------------ ****
