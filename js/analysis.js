@@ -91,7 +91,7 @@ function loadPositionList() {
                 // **** 使用 getPositionName 获取规范名称 ****
                 const positionName = getPositionName(positionCode);
                 if (!uniquePositions[positionCode]) {
-                    uniquePositions[positionCode] = positionName; 
+                    uniquePositions[positionCode] = positionName;
                     // console.log(`[loadPositionList] Found unique position: Code='${positionCode}', Name='${positionName}'`);
                 }
             } else {

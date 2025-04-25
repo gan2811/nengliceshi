@@ -34,19 +34,25 @@ let startAssessmentAfterLogin = false; // 标记是否登录后立即开始测�
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("[DOMContentLoaded in main.js] Initializing system and auth UI..."); // 确认 main.js 的 DOMContentLoaded 执行
+    console.log("--- [DEBUG] DOMContentLoaded event fired! ---"); // **新增: 确认事件触发**
+    
+    console.log("[DOMContentLoaded in main.js] Initializing system and auth UI..."); 
     initializeSystem();
 
     // **** 新增：认证相关初始化 ****
     // 获取模态框实例 (如果使用 Bootstrap)
+    console.log("[DEBUG] Attempting to find loginModal element...");
     const loginModalElement = document.getElementById('loginModal');
-    if (loginModalElement && typeof bootstrap !== 'undefined') { // 确保 bootstrap JS 已加载
-        console.log("[main.js] Found loginModal element and bootstrap. Creating modal instance.");
-        loginModalInstance = new bootstrap.Modal(loginModalElement);
-    } else if (loginModalElement) {
-         console.warn("[main.js] Bootstrap Modal JS not found for loginModal, using basic show/hide.");
+    if (loginModalElement && typeof bootstrap !== 'undefined') { 
+        console.log("[DEBUG] Found loginModal and bootstrap. Creating instance...");
+        try {
+            loginModalInstance = new bootstrap.Modal(loginModalElement);
+            console.log("[DEBUG] loginModalInstance created:", loginModalInstance);
+        } catch (error) {
+             console.error("[DEBUG] Error creating loginModalInstance:", error);
+        }
     } else {
-         // console.log("[main.js] loginModal element not found on this page."); // 如果页面没有登录模态框，这是正常的
+         console.warn("[DEBUG] loginModal element or bootstrap JS not found initially.");
     }
 
     // 绑定模态框登录按钮事件 (如果存在)
@@ -88,36 +94,65 @@ document.addEventListener('DOMContentLoaded', function() {
     // **** 结束新增 ****
 
     // 检查用户登录状态
-    if (typeof AV !== 'undefined' && AV.User) { // 确保 AV SDK 已加载
+    console.log("[DEBUG] Checking initial user login state...");
+    if (typeof AV !== 'undefined' && AV.User) { 
         currentUser = AV.User.current();
-        if (currentUser) {
-            console.log(`[main.js] User already logged in: ${currentUser.getUsername()}`);
-        } else {
-            console.log("[main.js] User not logged in initially.");
-        }
+        console.log("[DEBUG] Initial currentUser:", currentUser ? currentUser.getUsername() : 'null');
     } else {
-        console.warn("[main.js] AV SDK or AV.User is not available yet for checking current user.");
-        // 可以考虑稍后重试或依赖其他逻辑
+        console.warn("[DEBUG] AV SDK or AV.User not available yet for user check.");
     }
 
-
     // 更新导航栏 UI (确保在 currentUser 可能被设置后调用)
+    console.log("[DEBUG] Calling updateAuthUI...");
     updateAuthUI();
+    console.log("[DEBUG] updateAuthUI finished.");
     // **** 结束新增认证相关初始化 ****
 
-    // **** 新增：为首页的登录按钮添加事件监听器 ****
-    const indexLoginButton = document.getElementById('indexLoginButton');
-    if (indexLoginButton) {
-        console.log("[main.js] Adding click listener to indexLoginButton.");
-        indexLoginButton.addEventListener('click', (event) => {
-            event.preventDefault(); // 阻止可能的默认行为
-            showLoginModal();     // 显示登录模态框
+    // **** 新增：为导航栏的登录按钮添加事件监听器 ****
+    const navbarLoginButton = document.getElementById('loginButton');
+    if (navbarLoginButton) {
+        console.log("[DEBUG] Found navbar #loginButton. Adding click listener...");
+        navbarLoginButton.addEventListener('click', (event) => {
+            event.preventDefault(); // Prevent default anchor behavior
+            console.log("--- [DEBUG] Navbar #loginButton CLICKED! ---");
+            showLoginModal(); // Show the login modal
         });
+        console.log("[DEBUG] Event listener ADDED successfully to navbar #loginButton.");
     } else {
-         // console.log("[main.js] indexLoginButton not found on this page."); // 在非首页是正常的
+        console.warn("[DEBUG] Navbar #loginButton NOT FOUND when trying to add listener.");
     }
     // **** 结束新增 ****
 
+    // **** 之前调试首页按钮的代码 (保留，以防万一) ****
+    setTimeout(() => {
+        console.log("[DEBUG] Inside setTimeout(0) - Checking document.body.innerHTML...");
+        // **** 新增: 打印整个 body 的 HTML ****
+        // console.log("Current document.body.innerHTML:", document.body.innerHTML); // Commented out to reduce noise
+        // **** 结束新增 ****
+
+        console.log("[DEBUG] Inside setTimeout(0) - Attempting to find indexLoginButton...");
+        const indexLoginButton = document.getElementById('indexLoginButton');
+        // console.log("[DEBUG] Inside setTimeout(0) - Result of getElementById('indexLoginButton'):", indexLoginButton); // Commented out
+
+        if (indexLoginButton) {
+            // console.log("[DEBUG] Inside setTimeout(0) - indexLoginButton found. Attempting to add listener..."); // Commented out
+            try {
+                indexLoginButton.addEventListener('click', (event) => {
+                    event.preventDefault();
+                    console.log("--- [DEBUG] indexLoginButton CLICKED! (from setTimeout) ---");
+                    showLoginModal();
+                });
+                // console.log("[DEBUG] Inside setTimeout(0) - Event listener ADDED successfully to indexLoginButton."); // Commented out
+            } catch (error) {
+                console.error("[DEBUG] Inside setTimeout(0) - Error ADDING event listener to indexLoginButton:", error);
+            }
+        } else {
+            // console.warn("[DEBUG] Inside setTimeout(0) - indexLoginButton NOT FOUND when trying to add listener."); // Commented out
+        }
+    }, 0); // Delay of 0 milliseconds
+    // **** 结束之前的调试 ****
+
+    console.log("--- [DEBUG] DOMContentLoaded handler finished! --- (setTimeout scheduled)");
 });
 
 // 系统初始化
@@ -626,7 +661,7 @@ function showAuthError(message) {
 
 // Utility function to show the login modal (修改: 确保切换回登录视图)
 function showLoginModal() {
-    console.log("[showLoginModal] Attempting to show login modal.");
+    console.log("[showLoginModal] Entered function."); // **新增日志**
     // **** 新增: 每次打开时，确保是登录视图 ****
     switchToLoginView(); 
 
@@ -636,16 +671,33 @@ function showLoginModal() {
         alert('无法找到登录窗口元素！');
         return;
     }
+    // **新增日志: 检查 loginModalInstance**
+    console.log("[showLoginModal] Checking loginModalInstance:", loginModalInstance);
     if (!loginModalInstance && typeof bootstrap !== 'undefined') {
-        console.log("[showLoginModal] Creating new bootstrap modal instance.");
-        loginModalInstance = new bootstrap.Modal(loginModalElement);
+        console.log("[showLoginModal] Creating new bootstrap modal instance because it's null or undefined."); // **修改日志**
+        try {
+            loginModalInstance = new bootstrap.Modal(loginModalElement);
+            console.log("[showLoginModal] Bootstrap modal instance created successfully:", loginModalInstance); // **新增日志**
+        } catch (error) {
+            console.error("[showLoginModal] Error creating Bootstrap modal instance:", error); // **新增错误捕获**
+            alert('初始化登录窗口失败！');
+            return;
+        }
     }
     if (loginModalInstance) {
-        console.log("[showLoginModal] Showing modal via bootstrap instance.");
-        loginModalInstance.show();
-    } else if (loginModalElement) {
-        console.warn("Bootstrap modal instance not available, using basic show.");
+        console.log("[showLoginModal] Attempting to show modal via bootstrap instance..."); // **修改日志**
+        try {
+             loginModalInstance.show();
+             console.log("[showLoginModal] modalInstance.show() called successfully."); // **新增日志**
+        } catch (error) {
+             console.error("[showLoginModal] Error calling modalInstance.show():", error); // **新增错误捕获**
+             alert('显示登录窗口时出错！');
+        }
+    } else if (loginModalElement && typeof bootstrap === 'undefined') { // 检查 bootstrap 是否未定义
+        console.warn("Bootstrap JS seems unavailable. Trying basic DOM manipulation to show modal."); // **修改日志**
         loginModalElement.style.display = 'block'; // 或 'flex'
+    } else {
+        console.error("[showLoginModal] Cannot show modal. Instance is null/invalid and Bootstrap JS might be missing or failed to initialize the instance."); // **新增错误**
     }
 }
 
