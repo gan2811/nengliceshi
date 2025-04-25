@@ -497,7 +497,7 @@ function populateTable(records) {
                 position = posObj.name || posObj.code || '未命名岗位'; 
                 // **** 删除调试日志 ****
                 // console.log(`[populateTable] Found Position Object in allPositions:`, JSON.stringify(posObj), `Setting position to: ${position}`);
-            } else {
+        } else {
                  console.error(`[populateTable] Position object with ID ${targetPositionId} NOT FOUND in allPositions.`);
                 // Check for type mismatch just in case
                 const posObjLoose = allPositions.find(p => p.objectId == targetPositionId);
@@ -1092,13 +1092,13 @@ async function resumeAssessment(assessmentId) {
     // 1. 检查本地是否存在不相关的进行中测评
     const localStateKey = 'activeAssessmentState'; // 使用与 assessment.js 统一的键名
     let localState = null;
-    try {
+         try {
         const storedState = localStorage.getItem(localStateKey);
         if (storedState) {
             localState = JSON.parse(storedState);
             console.log("Found local assessment state:", localState);
         }
-    } catch (e) {
+         } catch (e) {
         console.error("Error reading local assessment state:", e);
         // 出错时，为安全起见，可以当作存在冲突，或者忽略本地状态
         // 这里选择忽略本地状态错误，允许继续恢复
@@ -1132,11 +1132,11 @@ async function resumeAssessment(assessmentId) {
     // 2. 如果允许恢复 (没有冲突或用户确认覆盖)，则跳转
     if (proceedToResume) {
         console.log(`Proceeding to navigate to assessment.html?resumeId=${assessmentId}`);
-        window.location.href = `assessment.html?resumeId=${assessmentId}`;
+         window.location.href = `assessment.html?resumeId=${assessmentId}`;
     } else {
          // 用户取消，可以不做任何事，或者给个提示
          // alert("恢复操作已取消。");
-    }
+     }
 }
 
 // **** 结束修改 ****

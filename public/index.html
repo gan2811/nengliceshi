@@ -7,6 +7,18 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
     <link href="css/style.css" rel="stylesheet">
+    <!-- **** 新增: 操作指南标题样式 **** -->
+    <style>
+        .guide-title {
+            font-weight: bold;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            display: inline-block; /* Needed for background-clip */
+        }
+    </style>
+    <!-- **** 结束新增 **** -->
 </head>
 <body>
     <div class="container mt-5">
@@ -17,7 +29,17 @@
         
         <h1 class="text-center index-title">大礼堂中心站能力测试评分系统</h1>
         
+        <!-- Moved login button here -->
+
         <div class="row g-lg-5 g-md-4 justify-content-center">
+            <!-- **** 首页登录/注册按钮移到这里 (仅未登录时显示) **** -->
+            <div class="col-12 text-center mb-4 logged-out-item">
+                <button id="indexLoginButton" class="btn btn-outline-primary btn-lg">
+                    <i class="bi bi-box-arrow-in-right me-1"></i> 登录 / 注册
+                </button>
+            </div>
+            <!-- **** 结束移动 **** -->
+
             <!-- Row 1 -->
             <div class="col-lg-5 col-md-6 scale-rotate-fade-in delay-1">
                 <div class="card h-100 index-card hover-primary">
@@ -69,7 +91,79 @@
                 </div>
             </div>
         </div>
+
+        <!-- **** 新增：操作指南 (用 Card 包装并调整样式) **** -->
+        <div class="row justify-content-center">
+            <div class="mt-5 col-lg-10"> <!-- Adjust width and remove pt-4 -->
+                <div class="card bg-transparent border-0"> <!-- Make card transparent, remove border and shadow -->
+                    <div class="card-body"> 
+                        <h3 class="card-title text-start mb-4 guide-title">操作指南</h3> <!-- Changed alignment, added custom class -->
+                        <ul class="list-group small"> <!-- Added small class, Removed list-group-flush -->
+                            <li class="list-group-item bg-transparent border-0"><strong>新用户注册/登录:</strong> 点击页面上方的“登录/注册”按钮，按提示完成注册或登录，完成登录后方能开启测评、访问历史测评记录、查看数据分析。</li>
+                            <li class="list-group-item bg-transparent border-0"><strong>开始测评:</strong> 登录后，点击“开始测评”卡片，即可进行岗位能力测试。首次测评开始前需导入题库，测评中可随时暂停，如需继续请前往历史记录页面，点击“继续”按钮。</li>
+                            <li class="list-group-item bg-transparent border-0"><strong>查看结果:</strong> 完成测评后，可在“历史记录”页面查看和导出您的得分和详细记录。</li>
+                            <li class="list-group-item bg-transparent border-0"><strong>数据分析:</strong> 测评记录会在该界面进行分析，可通过筛选选框更精确的查看个人和岗位整体表现统计。</li>
+                            <li class="list-group-item bg-transparent border-0"><strong>题库管理:</strong> 批量导入题库请下载题库模板，您也可以手动添加题目，如需管理测评题目，可点击题目中的编辑、删除按钮。</li>
+                            <li class="list-group-item bg-transparent border-0"><strong>联系我们:</strong> 如需帮助，请联系nlcs@dltzxz.top。</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- **** 结束新增 **** -->
+
     </div>
+
+    <!-- **** 新增：从 history.html 复制的登录/注册模态框 **** -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">请登录</h5> <!-- Title changes based on view -->
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <!-- Error Alert -->
+                    <div class="alert alert-danger d-none" role="alert" id="authErrorAlert"></div>
+                    
+                    <!-- Login/Register Form -->
+                    <form id="authForm">
+                        <div class="mb-3">
+                            <label for="loginEmail" class="form-label">邮箱</label>
+                            <input type="email" class="form-control" id="loginEmail" required autocomplete="email">
+                        </div>
+                        <div class="mb-3">
+                            <label for="loginPassword" class="form-label">密码</label>
+                            <input type="password" class="form-control" id="loginPassword" required autocomplete="current-password">
+                        </div>
+                        <!-- **** 新增：忘记密码链接 **** -->
+                        <div class="text-end mb-3">
+                             <a href="#" id="forgotPasswordLink" class="small text-decoration-none">忘记密码？</a>
+                        </div>
+                        <!-- Registration Only Field -->
+                        <div class="mb-3 registration-field d-none"> 
+                            <label for="registerConfirmPassword" class="form-label">确认密码</label>
+                            <input type="password" class="form-control" id="registerConfirmPassword" required minlength="6" autocomplete="new-password">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <!-- Switch Links -->
+                    <div>
+                        <a href="#" id="switchToRegisterLink" class="small text-decoration-none">还没有账号？点击注册</a>
+                        <a href="#" id="switchToLoginLink" class="small text-decoration-none d-none">已有账号？返回登录</a>
+                    </div>
+                    <!-- Action Buttons -->
+                    <div>
+                         <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                         <button type="button" class="btn btn-primary login-button" id="loginSubmitButton">登录</button>
+                         <button type="button" class="btn btn-primary registration-button d-none" id="registerSubmitButton">注册</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- **** 结束新增模态框 **** -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <!-- 首先引入 LeanCloud SDK -->
