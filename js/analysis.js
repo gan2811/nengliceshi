@@ -1,132 +1,26 @@
 // 全局变量，用于存储图表实例，方便更新
-let sectionMasteryChartInstance = null;
-let scoreDistributionChartInstance = null;
-let individualSectionChartInstance = null;
-let historicalScoresChartInstance = null;
-// **** Add missing global variable ****
-let positionSectionChartInstance = null;
-let allEmployees = []; // 存储所有员工
+let sectionMasteryChart = null;
+let overallAverageChart = null;
+let positionMatchChart = null;
 
+// 页面加载完成时执行
+document.addEventListener('DOMContentLoaded', async () => {
+    // **** 新增：检查用户登录状态 ****
+    if (typeof AV === 'undefined' || !AV.User.current()) {
+        console.log("用户未登录，正在重定向到首页...");
+        // 可以在这里显示一个短暂的提示，然后跳转
+        // displayError("请先登录后访问数据分析。");
+        window.location.href = 'index.html'; // 重定向到首页
+        return; // 阻止后续代码执行
+    }
+    // **** 结束新增 ****
 
-// **** 新增：清空分析显示区域函数 ****
-function clearAnalysisDisplay() {
-    // 岗位分析区域
-    const positionContent = document.getElementById('positionAnalysisContent');
-    const positionPlaceholder = document.getElementById('positionAnalysisPlaceholder');
-    if (positionContent) positionContent.style.display = 'none';
-    if (positionPlaceholder) positionPlaceholder.style.display = 'block'; // 显示提示
-
-    // 个人分析区域
-    const individualContent = document.getElementById('individualAnalysisContent');
-    const individualPlaceholder = document.getElementById('individualAnalysisPlaceholder');
-     if (individualContent) individualContent.style.display = 'none';
-     if (individualPlaceholder) individualPlaceholder.style.display = 'block'; // 显示提示
-
-     // 销毁图表实例以清除旧数据和避免内存泄漏
-     if (positionSectionChartInstance) { positionSectionChartInstance.destroy(); positionSectionChartInstance = null; }
-     if (scoreDistributionChartInstance) { scoreDistributionChartInstance.destroy(); scoreDistributionChartInstance = null; }
-     if (individualSectionChartInstance) { individualSectionChartInstance.destroy(); individualSectionChartInstance = null; }
-     if (historicalScoresChartInstance) { historicalScoresChartInstance.destroy(); historicalScoresChartInstance = null; }
-
-     // 清空列表内容 (可选, 如果加载函数会覆盖的话)
-    // const bestQuestionsList = document.getElementById('bestQuestionsList');
-    // const worstQuestionsList = document.getElementById('worstQuestionsList');
-    // const positionTrainingSuggestions = document.getElementById('positionTrainingSuggestions');
-    // const individualBestQuestionsList = document.getElementById('individualBestQuestionsList');
-    // const individualWorstQuestionsList = document.getElementById('individualWorstQuestionsList');
-    // const individualTrainingSuggestions = document.getElementById('individualTrainingSuggestions');
-    // if (bestQuestionsList) bestQuestionsList.innerHTML = '<li>加载中...</li>';
-    // if (worstQuestionsList) worstQuestionsList.innerHTML = '<li>加载中...</li>';
-    // if (positionTrainingSuggestions) positionTrainingSuggestions.innerHTML = '<li>加载中...</li>';
-    // if (individualBestQuestionsList) individualBestQuestionsList.innerHTML = '<li>加载中...</li>';
-    // if (individualWorstQuestionsList) individualWorstQuestionsList.innerHTML = '<li>加载中...</li>';
-    // if (individualTrainingSuggestions) individualTrainingSuggestions.innerHTML = '<li>加载中...</li>';
-
-    // 清空个人信息区域和下拉框状态
-    const selectedInfo = document.getElementById('selectedEmployeeInfo');
-    if(selectedInfo) selectedInfo.textContent = '';
-    const recordSelect = document.getElementById('assessmentRecordSelect');
-    if(recordSelect) {
-        recordSelect.innerHTML = '<option value="">-- 选择员工后加载 --</option>';
-        recordSelect.disabled = true;
+    if (typeof AV === 'undefined') {
+        console.error('LeanCloud SDK 未加载');
+        displayError('数据加载失败，请检查网络连接或联系管理员。');
+        return; // 阻止后续代码执行
     }
 
-    console.log("Analysis display cleared.");
-}
-// **** 结束新增清空函数 ****
-
-// **** 新增：加载岗位列表到下拉框 ****
-function loadPositionList() {
-    // console.log("[loadPositionList] Function called."); // ADDED LOG
-    const positionSelect = document.getElementById('positionSelect'); // 岗位分析用
-    const employeePositionSelect = document.getElementById('employeePosition'); // 个人分析用
-
-    if (!positionSelect || !employeePositionSelect) {
-        console.error("[loadPositionList] 错误：找不到岗位选择下拉框元素。");
-        return;
-    }
-    // console.log("[loadPositionList] Found dropdown elements."); // ADDED LOG
-
-    // 清空现有选项 (保留默认的 "全部岗位")
-    positionSelect.innerHTML = '<option value="all">全部岗位</option>';
-    employeePositionSelect.innerHTML = '<option value="all">全部岗位</option>';
-
-    try {
-        // console.log("[loadPositionList] Trying to load assessmentHistory..."); // ADDED LOG
-        const allHistoryStr = localStorage.getItem('assessmentHistory'); // ADDED intermediate variable
-        if (!allHistoryStr) {
-            // console.warn("[loadPositionList] assessmentHistory is null or empty in localStorage."); // ADDED LOG
-            return; // Exit if no history
-        }
-        const allHistory = JSON.parse(allHistoryStr || '[]');
-        // console.log(`[loadPositionList] Parsed ${allHistory.length} history records.`); // ADDED LOG
-
-        const uniquePositions = {}; // Use an object to store unique positions { code: name }
-
-        allHistory.forEach((record, index) => { // ADDED index for logging
-            // Ensure record exists and has a position code
-            if (record && record.position) {
-                const positionCode = record.position;
-                // Try to get the name from userInfo first, then use getPositionName as fallback
-                const positionName = record.userInfo?.positionName || getPositionName(positionCode) || positionCode;
-                // Add to unique positions if not already present
-                if (!uniquePositions[positionCode]) {
-                    uniquePositions[positionCode] = positionName;
-                    // console.log(`[loadPositionList] Found unique position from record ${index}: Code='${positionCode}', Name='${positionName}'`); // Optional detailed log
-                }
-            } else {
-                 // console.warn(`[loadPositionList] Record ${index} missing position field:`, record); // Optional detailed log
-            }
-        });
-        // console.log("[loadPositionList] Collected unique positions:", uniquePositions); // ADDED LOG
-
-        let positionCount = 0;
-        // Populate dropdowns using the collected unique positions
-        for (const code in uniquePositions) {
-            if (Object.hasOwnProperty.call(uniquePositions, code)) {
-                const name = uniquePositions[code]; // Get the name from our collected map
-                const option = document.createElement('option');
-                option.value = code;
-                option.textContent = name;
-                positionSelect.appendChild(option.cloneNode(true));
-                employeePositionSelect.appendChild(option);
-                positionCount++;
-            }
-        }
-        // console.log(`[loadPositionList] Added ${positionCount} position options to dropdowns.`); // ADDED LOG
-
-        if (positionCount === 0) {
-            // console.warn("[loadPositionList] No unique positions found after processing history.");
-        }
-    } catch (error) {
-        console.error("[loadPositionList] Error during processing:", error); // ADDED LOG
-    }
-    // console.log("[loadPositionList] Function finished."); // ADDED LOG
-}
-// **** 结束新增函数 ****
-
-// 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
     // 初始化岗位分析日期范围为当前月份
     // const today = new Date();
     // const currentMonth = today.getFullYear() + '-' + ('0' + (today.getMonth() + 1)).slice(-2);
@@ -218,7 +112,7 @@ function clearPositionAnalysis() {
      document.getElementById('positionAnalysisContent').style.display = 'none';
      document.getElementById('positionAnalysisPlaceholder').style.display = 'block';
      // 可以选择性地销毁旧图表
-     if (sectionMasteryChartInstance) sectionMasteryChartInstance.destroy();
+     if (sectionMasteryChart) sectionMasteryChart.destroy();
      if (scoreDistributionChartInstance) scoreDistributionChartInstance.destroy();
      document.getElementById('bestQuestionsList').innerHTML = '<li>加载中...</li>';
      document.getElementById('worstQuestionsList').innerHTML = '<li>加载中...</li>';
@@ -381,11 +275,11 @@ function renderSectionMasteryChart(sectionData) {
     const labels = Object.keys(sectionData);
     const data = Object.values(sectionData);
 
-    if (sectionMasteryChartInstance) {
-        sectionMasteryChartInstance.destroy(); // 销毁旧图表
+    if (sectionMasteryChart) {
+        sectionMasteryChart.destroy(); // 销毁旧图表
     }
 
-    sectionMasteryChartInstance = new Chart(ctx, {
+    sectionMasteryChart = new Chart(ctx, {
         type: 'bar',
         data: {
             labels: labels,
@@ -909,11 +803,11 @@ function calculateIndividualQuestionPerformance(record) {
                      if (scoreRate < 70) { // 低于 70% 的放入待提高 (使用之前的阈值或根据需要调整)
                          performance.worst.push(questionInfo);
                      } else { // 大于等于 70% 的放入掌握较好
-                         performance.best.push(questionInfo);
+                 performance.best.push(questionInfo);
                      }
                  } else { // 分数无效或为 null (可能发生在导入或旧数据)，归为待提高
-                     performance.worst.push(questionInfo);
-                 }
+                 performance.worst.push(questionInfo);
+             }
              } else { // 标准分为0或无效，归为待提高
                  performance.worst.push(questionInfo);
              }
@@ -2239,7 +2133,7 @@ function filterEmployeesByPosition(positionId) {
     // 按照员工 ID 排序 (可选)
     // ... existing code ...
     // });
-
+        
     // console.log("[filterEmployeesByPosition] 结束."); // End Log
     return filteredEmployees;
 }
