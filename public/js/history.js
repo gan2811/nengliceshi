@@ -10,6 +10,16 @@ let allPositions = []; // **** 新增：存储所有岗位信息的数组 ****
 
 // 页面加载完成后初始化
 document.addEventListener('DOMContentLoaded', async function() {
+    // **** 新增：检查用户登录状态 ****
+    if (typeof AV === 'undefined' || !AV.User.current()) {
+        console.log("用户未登录，正在重定向到首页...");
+        // 可以在这里显示一个短暂的提示，然后跳转
+        // displayError("请先登录后访问历史记录。");
+        window.location.href = 'index.html'; // 重定向到首页
+        return; // 阻止后续代码执行
+    }
+    // **** 结束新增 ****
+
     // 检查 LeanCloud SDK
     if (typeof AV === 'undefined') {
         displayError("LeanCloud SDK 未加载，请检查 HTML 文件。");
