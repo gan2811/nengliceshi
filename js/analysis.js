@@ -2,6 +2,127 @@
 let sectionMasteryChart = null;
 let overallAverageChart = null;
 let positionMatchChart = null;
+// **** 重新添加被误删的全局变量 ****
+let scoreDistributionChartInstance = null;
+let individualSectionChartInstance = null;
+let historicalScoresChartInstance = null;
+let allEmployees = []; // 存储所有员工
+// **** 结束添加 ****
+
+// **** 新增：清空分析显示区域函数 ****
+function clearAnalysisDisplay() {
+    // 岗位分析区域
+    const positionContent = document.getElementById('positionAnalysisContent');
+    const positionPlaceholder = document.getElementById('positionAnalysisPlaceholder');
+    if (positionContent) positionContent.style.display = 'none';
+    if (positionPlaceholder) positionPlaceholder.style.display = 'block'; // 显示提示
+
+    // 个人分析区域
+    const individualContent = document.getElementById('individualAnalysisContent');
+    const individualPlaceholder = document.getElementById('individualAnalysisPlaceholder');
+     if (individualContent) individualContent.style.display = 'none';
+     if (individualPlaceholder) individualPlaceholder.style.display = 'block'; // 显示提示
+
+     // 销毁图表实例以清除旧数据和避免内存泄漏
+     // **** 注意：这里可能需要检查全局变量是否存在 ****
+     if (typeof sectionMasteryChart !== 'undefined' && sectionMasteryChart) { sectionMasteryChart.destroy(); sectionMasteryChart = null; }
+     if (typeof scoreDistributionChartInstance !== 'undefined' && scoreDistributionChartInstance) { scoreDistributionChartInstance.destroy(); scoreDistributionChartInstance = null; }
+     if (typeof individualSectionChartInstance !== 'undefined' && individualSectionChartInstance) { individualSectionChartInstance.destroy(); individualSectionChartInstance = null; }
+     if (typeof historicalScoresChartInstance !== 'undefined' && historicalScoresChartInstance) { historicalScoresChartInstance.destroy(); historicalScoresChartInstance = null; }
+
+     // 清空列表内容 (可选, 如果加载函数会覆盖的话)
+    // const bestQuestionsList = document.getElementById('bestQuestionsList');
+    // const worstQuestionsList = document.getElementById('worstQuestionsList');
+    // const positionTrainingSuggestions = document.getElementById('positionTrainingSuggestions');
+    // const individualBestQuestionsList = document.getElementById('individualBestQuestionsList');
+    // const individualWorstQuestionsList = document.getElementById('individualWorstQuestionsList');
+    // const individualTrainingSuggestions = document.getElementById('individualTrainingSuggestions');
+    // if (bestQuestionsList) bestQuestionsList.innerHTML = '<li>加载中...</li>';
+    // if (worstQuestionsList) worstQuestionsList.innerHTML = '<li>加载中...</li>';
+    // if (positionTrainingSuggestions) positionTrainingSuggestions.innerHTML = '<li>加载中...</li>';
+    // if (individualBestQuestionsList) individualBestQuestionsList.innerHTML = '<li>加载中...</li>';
+    // if (individualWorstQuestionsList) individualWorstQuestionsList.innerHTML = '<li>加载中...</li>';
+    // if (individualTrainingSuggestions) individualTrainingSuggestions.innerHTML = '<li>加载中...</li>';
+
+    // 清空个人信息区域和下拉框状态
+    const selectedInfo = document.getElementById('selectedEmployeeInfo');
+    if(selectedInfo) selectedInfo.textContent = '';
+    const recordSelect = document.getElementById('assessmentRecordSelect');
+    if(recordSelect) {
+        recordSelect.innerHTML = '<option value="">-- 选择员工后加载 --</option>';
+        recordSelect.disabled = true;
+    }
+
+    // console.log("Analysis display cleared.");
+}
+// **** 结束新增清空函数 ****
+
+// **** 新增：加载岗位列表到下拉框 ****
+function loadPositionList() {
+    // console.log("[loadPositionList] Function called.");
+    const positionSelect = document.getElementById('positionSelect'); // 岗位分析用
+    const employeePositionSelect = document.getElementById('employeePosition'); // 个人分析用
+
+    if (!positionSelect || !employeePositionSelect) {
+        console.error("[loadPositionList] 错误：找不到岗位选择下拉框元素。");
+        return;
+    }
+    // console.log("[loadPositionList] Found dropdown elements.");
+
+    // 清空现有选项 (保留默认的 "全部岗位")
+    positionSelect.innerHTML = '<option value="all">全部岗位</option>';
+    employeePositionSelect.innerHTML = '<option value="all">全部岗位</option>';
+
+    try {
+        // console.log("[loadPositionList] Trying to load assessmentHistory...");
+        const allHistoryStr = localStorage.getItem('assessmentHistory');
+        if (!allHistoryStr) {
+            // console.warn("[loadPositionList] assessmentHistory is null or empty.");
+            return; // Exit if no history
+        }
+        const allHistory = JSON.parse(allHistoryStr || '[]');
+        // console.log(`[loadPositionList] Parsed ${allHistory.length} history records.`);
+
+        const uniquePositions = {}; // { code: name }
+
+        allHistory.forEach((record, index) => {
+            if (record && record.position) {
+                const positionCode = record.position;
+                // **** 使用 getPositionName 获取规范名称 ****
+                const positionName = getPositionName(positionCode);
+                if (!uniquePositions[positionCode]) {
+                    uniquePositions[positionCode] = positionName; 
+                    // console.log(`[loadPositionList] Found unique position: Code='${positionCode}', Name='${positionName}'`);
+                }
+            } else {
+                 // console.warn(`[loadPositionList] Record ${index} missing position field.`);
+            }
+        });
+        // console.log("[loadPositionList] Collected unique positions:", uniquePositions);
+
+        let positionCount = 0;
+        for (const code in uniquePositions) {
+            if (Object.hasOwnProperty.call(uniquePositions, code)) {
+                const name = uniquePositions[code];
+                const option = document.createElement('option');
+                option.value = code;
+                option.textContent = name;
+                positionSelect.appendChild(option.cloneNode(true));
+                employeePositionSelect.appendChild(option);
+                positionCount++;
+            }
+        }
+        // console.log(`[loadPositionList] Added ${positionCount} position options.`);
+
+        if (positionCount === 0) {
+            // console.warn("[loadPositionList] No unique positions found.");
+        }
+    } catch (error) {
+        console.error("[loadPositionList] Error during processing:", error);
+    }
+    // console.log("[loadPositionList] Function finished.");
+}
+// **** 结束新增函数 ****
 
 // 页面加载完成时执行
 document.addEventListener('DOMContentLoaded', async () => {
@@ -2210,7 +2331,7 @@ function renderPositionSectionMasteryChart(averageRates, chartTitle = '各板块
 
     if (!averageRates || Object.keys(averageRates).length === 0) {
         console.warn('[renderPositionSectionMasteryChart] No average rates data.');
-        if (positionSectionChartInstance) positionSectionChartInstance.destroy();
+        if (sectionMasteryChart) sectionMasteryChart.destroy(); // <-- Changed variable name
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.textAlign = 'center'; ctx.fillStyle = '#6c757d'; 
         ctx.fillText('无板块掌握度数据', ctx.canvas.width / 2, ctx.canvas.height / 2);
@@ -2226,13 +2347,13 @@ function renderPositionSectionMasteryChart(averageRates, chartTitle = '各板块
         'rgba(255, 193, 7, 0.8)', 'rgba(220, 53, 69, 0.8)', 'rgba(108, 117, 125, 0.8)'
     ];
 
-    if (positionSectionChartInstance) {
+    if (sectionMasteryChart) { // <-- Changed variable name
         // console.log('[renderPositionSectionMasteryChart] Destroying previous chart instance.');
-        positionSectionChartInstance.destroy();
+        sectionMasteryChart.destroy(); // <-- Changed variable name
     }
 
     try {
-        positionSectionChartInstance = new Chart(ctx, {
+        sectionMasteryChart = new Chart(ctx, { // <-- Changed variable name
             type: 'bar', 
             data: {
                 labels: labels,

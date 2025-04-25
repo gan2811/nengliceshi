@@ -105,16 +105,16 @@ document.addEventListener('DOMContentLoaded', function() {
     updateAuthUI();
     // **** 结束新增认证相关初始化 ****
 
-    // **** 新增：为导航栏的登录/注册链接添加事件监听器 ****
-    const navLoginRegisterLink = document.querySelector('.logged-out-item a, .logged-out-item button'); // 尝试查找 a 或 button
-    if (navLoginRegisterLink) {
-        console.log("[main.js] Adding click listener to navbar Login/Register link.");
-        navLoginRegisterLink.addEventListener('click', (event) => {
-            event.preventDefault(); // 阻止默认行为
+    // **** 新增：为首页的登录按钮添加事件监听器 ****
+    const indexLoginButton = document.getElementById('indexLoginButton');
+    if (indexLoginButton) {
+        console.log("[main.js] Adding click listener to indexLoginButton.");
+        indexLoginButton.addEventListener('click', (event) => {
+            event.preventDefault(); // 阻止可能的默认行为
             showLoginModal();     // 显示登录模态框
         });
     } else {
-        console.warn("[main.js] Could not find the navbar Login/Register link with selector '.logged-out-item a, .logged-out-item button'. Modal won't open from navbar link.");
+         // console.log("[main.js] indexLoginButton not found on this page."); // 在非首页是正常的
     }
     // **** 结束新增 ****
 
@@ -519,8 +519,6 @@ function updateAuthUI() {
             link.removeAttribute('aria-disabled');
             link.style.pointerEvents = 'auto';
             link.style.opacity = '1';
-            // 移除可能的事件监听器阻止
-            link.onclick = null; // 简单移除，或恢复原始 onclick
         });
         
         // **** 新增：更新导航栏标签为用户名 ****
@@ -529,7 +527,7 @@ function updateAuthUI() {
             loggedInUserLabel.textContent = userName;
             console.log(`[updateAuthUI] Set loggedInUserLabel text to: ${userName}`);
         } else {
-            console.warn("[updateAuthUI] Element with ID 'loggedInUserLabel' not found for updating username.");
+            // console.warn("[updateAuthUI] Element with ID 'loggedInUserLabel' not found for updating username."); // <-- Comment out the warning
         }
         // **** 结束新增 ****
 
@@ -544,12 +542,6 @@ function updateAuthUI() {
             link.setAttribute('aria-disabled', 'true');
             link.style.pointerEvents = 'none';
             link.style.opacity = '0.65';
-            // 添加点击事件以显示登录提示
-            link.onclick = (e) => {
-                e.preventDefault();
-                // alert('请先登录后再访问此页面。'); // 可以用 alert
-                showLoginModal(); // 或者直接显示登录模态框
-            };
         });
         // **** 新增：如果用户登出，恢复标签为"个人中心" ****
         if (loggedInUserLabel) {
