@@ -6,14 +6,18 @@ let currentSortOrder = 'desc'; // 默认排序顺序 (desc: 降序, asc: 升序)
 let totalRecords = 0; // 总记录数
 let currentFilters = {}; // 存储当前筛选条件
 let localUnsyncedRecords = []; // 存储找到的本地未同步记录
+let allPositions = []; // **** 新增：存储所有岗位信息的数组 ****
 
 // 页面加载完成后初始化
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // 检查 LeanCloud SDK
     if (typeof AV === 'undefined') {
         displayError("LeanCloud SDK 未加载，请检查 HTML 文件。");
         return;
     }
+
+    // **** 新增：首先获取所有岗位信息 ****
+    await fetchAllPositions();
 
     // 绑定筛选和搜索事件
     document.getElementById('startDate').addEventListener('change', applyFiltersAndLoad);
@@ -30,13 +34,16 @@ document.addEventListener('DOMContentLoaded', function() {
     // 绑定表头点击排序事件 (需要确保 HTML 中 th 有 onclick)
     // 示例: <th onclick="sortTable('timestamp')">测评时间</th>
 
-    // 绑定"从云端下载/刷新"按钮事件 (替换之前的清空按钮)
-    const refreshBtn = document.getElementById('downloadFromCloudBtn'); // 使用新按钮ID
-    if (refreshBtn) {
-        refreshBtn.textContent = '刷新云端记录'; // 更新按钮文本
-         refreshBtn.onclick = () => loadHistoryFromCloud(1); // 点击时加载第一页
-         refreshBtn.classList.remove('btn-info'); // 可选：如果想换样式
-         refreshBtn.classList.add('btn-primary'); // 可选：换成主要按钮样式
+    // **** 修改：查找正确的按钮 ID 并绑定事件 ****
+    const uploadBtn = document.getElementById('uploadToCloudBtn'); // **** 直接查找新的 ID ****
+    if (uploadBtn) {
+        uploadBtn.onclick = handleUploadToCloud; // **** 直接绑定处理函数 ****
+        // 如果需要，可以保留或添加样式修改
+        // uploadBtn.classList.remove('btn-primary'); 
+        // uploadBtn.classList.add('btn-info'); 
+    } else {
+        // **** 添加错误处理，以防按钮找不到 ****
+        console.error("Button with ID 'uploadToCloudBtn' not found in DOM on initialization!");
     }
     
     // **** 新增：绑定检查本地按钮事件 **** (保持绑定，但下面会自动调用一次)
@@ -52,6 +59,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     // exportListBtn 的 onclick 在 HTML 中定义了
 
+    // **** 新增：设置文件上传监听器 ****
+    setupFileUploadListener();
+
     // **自动加载第一页云端数据**
     loadHistoryFromCloud(currentPage); // Start loading cloud data
 
@@ -59,6 +69,49 @@ document.addEventListener('DOMContentLoaded', function() {
     // checkLocalRecords(); // Automatically check local records on load
 
 });
+
+// **** 新增：获取所有岗位信息的函数 ****
+async function fetchAllPositions() {
+    console.log("Fetching all job positions from LeanCloud...");
+    try {
+        const query = new AV.Query('Position');
+        query.limit(1000); // Assume less than 1000 positions
+        const positions = await query.find();
+        allPositions = positions.map(p => ({
+            objectId: p.id,
+            code: p.get('positionCode'), // Assuming field name is 'positionCode'
+            name: p.get('positionName')  // Assuming field name is 'positionName'
+        }));
+        // **** 新增日志：打印获取到的岗位数据 ****
+        console.log(`Fetched ${allPositions.length} positions. Data (first 10):`, JSON.stringify(allPositions.slice(0, 10)));
+        // 可选：填充岗位筛选下拉框 (如果需要且 HTML 中有对应元素)
+        populatePositionFilter();
+    } catch (error) {
+        console.error("获取岗位列表失败:", error);
+        // Display error to user? Or just log it?
+        // displayError("无法加载岗位列表，部分信息可能无法显示。");
+        allPositions = []; // Ensure it's empty on error
+    }
+}
+
+// **** 新增：填充岗位筛选下拉框 (可选) ****
+function populatePositionFilter() {
+    const filterSelect = document.getElementById('positionFilter');
+    if (!filterSelect) return; // 如果 HTML 中没有这个元素，则跳过
+
+    // 清空现有选项 (保留"全部")
+    while (filterSelect.options.length > 1) {
+        filterSelect.remove(1);
+    }
+
+    // 添加从 allPositions 获取的选项
+    allPositions.forEach(pos => {
+        const option = document.createElement('option');
+        option.value = pos.code; // 使用 code 作为值
+        option.textContent = pos.name || pos.code; // 显示 name，如果 name 没有则显示 code
+        filterSelect.appendChild(option);
+    });
+}
 
 // 应用筛选条件并重新加载数据
 function applyFiltersAndLoad() {
@@ -302,11 +355,14 @@ async function syncAllFilteredCloudDataToLocal() {
                  const localRecord = {
                      id: record.id,
                      userInfo: userInfo ? {
+                         // **** 新增：包含 UserProfile 的 ID ****
+                         id: userInfo.id, // 从 UserProfile 对象获取 ID
+                         objectId: userInfo.id, // 也存储为 objectId 以保持一致性
                          name: userInfo.get('name'),
                          employeeId: userInfo.get('employeeId'),
                          station: stationName,
                          position: positionName,
-                         positionName: positionName
+                         positionName: positionName // 确保也包含 positionName
                      } : {},
                      position: positionName,
                      assessor: record.get('assessorName'),
@@ -403,19 +459,51 @@ function populateTable(records) {
         const rank = (currentPage - 1) * recordsPerPage + index + 1;
         const assessmentStartTime = formatDate(record.get('startTime'), true); // 使用 startTime
         const userInfo = record.get('userPointer');
+        
+        // **** 删除调试日志 ****
+        // console.log(`[populateTable] Record ID: ${record.id} - Raw UserInfo object received:`, JSON.stringify(userInfo)); 
+        const positionPointerObject = userInfo ? userInfo.get('positionPointer') : null;
+        // console.log(`[populateTable] Record ID: ${record.id} - Value from userInfo.get('positionPointer'):`, JSON.stringify(positionPointerObject));
+        // **** 结束删除 ****
+
         const name = userInfo ? userInfo.get('name') : 'N/A';
         const employeeId = userInfo ? userInfo.get('employeeId') : 'N/A';
+        
         // **** 修改：通过指针链获取岗位名称 ****
-        const positionPointer = userInfo ? userInfo.get('positionPointer') : null;
-        // **** 新增日志 ****
-        if (!positionPointer) {
-            console.log(`[populateTable] Record ID: ${record.id} - UserProfile (ID: ${userInfo?.id}) has NO positionPointer.`);
+        // const positionPointer = userInfo ? userInfo.get('positionPointer') : null; // 使用上面获取的 positionPointerObject
+        const positionPointer = positionPointerObject; // 直接使用上面获取的对象
+        
+        // **** 尝试从 UserProfile 获取岗位名称 (根据指针) ****
+        let position = '未知';
+        // **** 修改：检查 positionPointer 对象本身及其 ID ****
+        if (positionPointer && positionPointer.id) { 
+            const targetPositionId = positionPointer.id;
+            // **** 删除调试日志 ****
+            // console.log(`[populateTable] Record ID: ${record.id}, User ID: ${userInfo?.id}, Looking for Position ID: ${targetPositionId} (Type: ${typeof targetPositionId})`);
+            const posObj = allPositions.find(p => {
+                 return p.objectId === targetPositionId;
+            });
+            if (posObj) {
+                position = posObj.name || posObj.code || '未命名岗位'; 
+                // **** 删除调试日志 ****
+                // console.log(`[populateTable] Found Position Object in allPositions:`, JSON.stringify(posObj), `Setting position to: ${position}`);
+            } else {
+                 console.error(`[populateTable] Position object with ID ${targetPositionId} NOT FOUND in allPositions.`);
+                // Check for type mismatch just in case
+                const posObjLoose = allPositions.find(p => p.objectId == targetPositionId);
+                if (posObjLoose) {
+                    console.warn(`[populateTable] Position ID ${targetPositionId} found with loose comparison (==), potential type mismatch. Found obj:`, JSON.stringify(posObjLoose));
+                }
+            }
         } else {
-            console.log(`[populateTable] Record ID: ${record.id} - UserProfile (ID: ${userInfo?.id}) has positionPointer pointing to Position ID: ${positionPointer.id}`);
+            // **** 删除调试日志 ****
+            // console.warn(`[populateTable] Record ID: ${record.id}, User ID: ${userInfo?.id} - Failed check: positionPointer object is missing or lacks an ID. Received positionPointer: ${JSON.stringify(positionPointer)}`);
+            // 保留一个基本的警告可能仍然有用，但可以简化
+             if (userInfo && !positionPointer) { // 只在 userInfo 存在但 positionPointer 不存在时警告
+                 console.warn(`[populateTable] UserProfile ${userInfo.id} for Record ${record.id} is missing positionPointer.`);
+             }
         }
-        const position = positionPointer ? positionPointer.get('positionName') : '未知';
-        // **** 新增日志 ****
-        console.log(`[populateTable] Record ID: ${record.id} - Final position value: ${position}`);
+        
         const recordStatus = record.get('status'); // 获取状态
         const isPaused = recordStatus === 'paused';
         const isFailed = recordStatus === 'failed_to_submit';
@@ -793,6 +881,19 @@ async function exportFullHistoryToExcel() {
         exportButton.disabled = true;
         exportButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 导出中...';
     }
+
+    // **** 新增：加载本地题库 ****
+    let questionBank = [];
+    try {
+        const bankData = localStorage.getItem('questionBank');
+        if (bankData) {
+            questionBank = JSON.parse(bankData);
+        }
+    } catch (e) {
+        console.error("加载题库失败 (用于导出详情):", e);
+        // 即使题库加载失败，也继续导出，只是标准答案会显示为'未找到'
+    }
+    // **** 结束加载题库 ****
 
     try {
         const maxExportLimit = 500; // Set a practical limit for full export
@@ -1235,5 +1336,436 @@ function formatDate(dateInput, includeTime = false) {
     } catch (e) {
         console.error("日期格式化错误:", e, "Input:", dateInput);
         return '日期错误';
+    }
+}
+
+// **** 新增：上传到云端的处理函数 ****
+function handleUploadToCloud() {
+    // **** 新增日志：确认函数调用和元素查找 ****
+    console.log("[handleUploadToCloud] Function called.");
+    const fileInput = document.getElementById('jsonFileInput');
+    console.log("[handleUploadToCloud] Found file input element:", fileInput);
+
+    // Trigger the hidden file input click
+    if (fileInput) {
+        fileInput.click();
+    } else {
+        console.error("JSON file input element not found!");
+        alert("无法找到文件上传组件，请检查页面 HTML。")
+    }
+}
+
+// **** 新增：文件选择事件监听器 ****
+function setupFileUploadListener() {
+    const fileInput = document.getElementById('jsonFileInput');
+    if (!fileInput) return;
+
+    fileInput.addEventListener('change', async (event) => {
+        const file = event.target.files[0];
+        if (!file) {
+            console.log("No file selected.");
+            return;
+        }
+
+        if (!file.name.toLowerCase().endsWith('.json')) {
+            alert("请选择有效的 JSON 文件 (.json)");
+            fileInput.value = ''; // Clear the input
+            return;
+        }
+
+        console.log(`Selected file: ${file.name}, size: ${file.size} bytes`);
+        showUploadProgress('开始读取文件...'); // Display initial progress
+
+        const reader = new FileReader();
+
+        reader.onload = async (e) => {
+            try {
+                const fileContent = e.target.result;
+                const data = JSON.parse(fileContent);
+
+                if (!data || !Array.isArray(data.assessmentHistory)) {
+                    throw new Error("JSON 文件格式无效，缺少 'assessmentHistory' 数组。");
+                }
+
+                const recordsToUpload = data.assessmentHistory;
+                console.log(`Parsed ${recordsToUpload.length} records from JSON.`);
+
+                if (recordsToUpload.length === 0) {
+                    alert("JSON 文件中没有找到有效的测评记录。");
+                    hideUploadProgress();
+                    return;
+                }
+
+                // **** 调用核心上传逻辑 ****
+                await processAndUploadRecords(recordsToUpload);
+
+            } catch (error) {
+                console.error("处理或上传 JSON 文件时出错:", error);
+                alert(`处理 JSON 文件失败: ${error.message}`);
+                hideUploadProgress();
+            } finally {
+                // Reset file input to allow selecting the same file again
+                fileInput.value = '';
+            }
+        };
+
+        reader.onerror = (error) => {
+            console.error("读取文件时出错:", error);
+            alert("读取文件失败。");
+            hideUploadProgress();
+            fileInput.value = ''; // Clear the input
+        };
+
+        reader.readAsText(file); // Start reading the file
+    });
+}
+
+// **** 新增：显示上传进度的辅助函数 ****
+function showUploadProgress(message) {
+    let progressArea = document.getElementById('uploadProgressArea');
+    if (!progressArea) {
+        progressArea = document.createElement('div');
+        progressArea.id = 'uploadProgressArea';
+        progressArea.className = 'mt-3 mb-3 p-3 border rounded bg-light';
+        // Insert it before the table container or filter section
+        const tableContainer = document.querySelector('.table-responsive');
+        const filterSection = document.querySelector('.filter-section');
+        if (tableContainer) {
+             tableContainer.parentNode.insertBefore(progressArea, tableContainer);
+        } else if (filterSection) {
+             filterSection.parentNode.insertBefore(progressArea, filterSection.nextSibling);
+        } else {
+             // Fallback to body beginning
+            document.body.insertBefore(progressArea, document.body.firstChild);
+        }
+    }
+    progressArea.innerHTML = `
+        <div class="d-flex align-items-center">
+            <div class="spinner-border spinner-border-sm text-primary me-2" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <span id="uploadProgressMessage">${message}</span>
+        </div>
+    `;
+    progressArea.style.display = 'block';
+}
+
+// **** 新增：隐藏上传进度的辅助函数 ****
+function hideUploadProgress() {
+    const progressArea = document.getElementById('uploadProgressArea');
+    if (progressArea) {
+        progressArea.style.display = 'none';
+        progressArea.innerHTML = ''; // Clear content
+    }
+}
+
+// **** 新增：核心上传处理函数 ****
+async function processAndUploadRecords(records) {
+    const totalRecords = records.length;
+    let successCount = 0;
+    let errorCount = 0;
+    const errors = [];
+
+    for (let i = 0; i < totalRecords; i++) {
+        const record = records[i];
+        const progressMessage = `正在上传第 ${i + 1} / ${totalRecords} 条记录 (${record.userInfo?.name || '未知用户'})...`;
+        console.log(progressMessage);
+        showUploadProgress(progressMessage);
+
+        try {
+            // 查找或创建用户、站点、岗位
+            const userPointer = await findOrCreateUserProfile(record.userInfo);
+            const stationPointer = await findOrCreateStation(record.userInfo?.station);
+            const positionPointer = await findOrCreatePosition(record.userInfo?.position);
+
+            // **** 关键：在创建 Assessment 前，更新 UserProfile 的 station 和 position 指针 ****
+            if (userPointer && (stationPointer || positionPointer)) {
+                 // **** 修改：使用 UserProfile ****
+                 let userToUpdate = AV.Object.createWithoutData('UserProfile', userPointer.id); 
+                 let needsUpdate = false;
+                 // **** 注意：需要先 fetch userPointer 以获取最新的关联数据 ****
+                 try {
+                    await userPointer.fetch({ include: ['stationPointer', 'positionPointer'] });
+                 } catch (fetchError) {
+                     console.warn(`Failed to fetch user ${userPointer.id} before updating pointers:`, fetchError);
+                     // 如果 fetch 失败，仍然尝试更新，但可能基于旧数据进行比较
+                 }
+
+                 // 检查并设置 stationPointer
+                 const currentStationId = userPointer.get('stationPointer')?.id;
+                 if (stationPointer && currentStationId !== stationPointer.id) {
+                     userToUpdate.set('stationPointer', stationPointer);
+                     needsUpdate = true;
+                     console.log(`Updating UserProfile ${userPointer.id} stationPointer from ${currentStationId || 'null'} to ${stationPointer.id}`);
+                 } else if (!stationPointer && currentStationId) {
+                     // 如果 JSON 中没有站点但 UserProfile 中有，可以选择清除或保留，这里选择保留
+                     // userToUpdate.unset('stationPointer'); needsUpdate = true;
+                     // console.log(`Keeping existing stationPointer ${currentStationId} for UserProfile ${userPointer.id} as new one is null.`);
+                 } else {
+                    // console.log(`StationPointer for UserProfile ${userPointer.id} does not need update.`);
+                 }
+
+                 // 检查并设置 positionPointer
+                 const currentPositionId = userPointer.get('positionPointer')?.id;
+                 if (positionPointer && currentPositionId !== positionPointer.id) {
+                     userToUpdate.set('positionPointer', positionPointer);
+                     needsUpdate = true;
+                     console.log(`Updating UserProfile ${userPointer.id} positionPointer from ${currentPositionId || 'null'} to ${positionPointer.id}`);
+                 } else if (!positionPointer && currentPositionId) {
+                     // 如果 JSON 中没有岗位但 UserProfile 中有，选择保留
+                     // userToUpdate.unset('positionPointer'); needsUpdate = true;
+                      // console.log(`Keeping existing positionPointer ${currentPositionId} for UserProfile ${userPointer.id} as new one is null.`);
+                 } else {
+                    // console.log(`PositionPointer for UserProfile ${userPointer.id} does not need update.`);
+                 }
+
+                 if (needsUpdate) {
+                     try {
+                         await userToUpdate.save();
+                         console.log(`Successfully updated UserProfile ${userPointer.id} with Station/Position pointers.`);
+                     } catch (updateError) {
+                         console.error(`Failed to update UserProfile ${userPointer.id} pointers:`, updateError);
+                         // Decide if this is a critical failure for the record upload
+                         errors.push(`记录 ${i+1} (${record.userInfo?.name}): 更新用户站点/岗位指针失败 - ${updateError.message}`);
+                         errorCount++;
+                         continue; // 跳过这条记录，因为用户关联可能不正确
+                     }
+                 }
+            }
+
+            // 创建 Assessment 对象
+            const Assessment = AV.Object.extend('Assessment');
+            const assessment = new Assessment();
+
+            // --- 映射字段 --- 
+            assessment.set('userPointer', userPointer); 
+            // 使用已找到/创建的 User Pointer
+            assessment.set('assessorName', record.assessor);
+            assessment.set('startTime', record.startTime ? new Date(record.startTime) : null);
+            assessment.set('endTime', record.timestamp ? new Date(record.timestamp) : null);
+            assessment.set('durationMinutes', record.duration);
+            assessment.set('totalScore', record.score?.totalScore);
+            assessment.set('maxPossibleScore', record.score?.maxScore);
+            assessment.set('scoreRate', record.score?.scoreRate);
+            assessment.set('status', record.status || 'completed'); // Default to completed if not present
+            assessment.set('elapsedSeconds', record.elapsedSeconds);
+            assessment.set('currentQuestionIndex', record.currentQuestionIndex);
+            assessment.set('totalActiveSeconds', record.totalActiveSeconds);
+            // **** 添加 positionCode 和 stationCode 到 Assessment 表 ****
+            if (positionPointer) {
+                assessment.set('positionCode', positionPointer.get('positionCode')); // Assuming positionPointer has code
+            }
+            if (stationPointer) {
+                assessment.set('stationCode', stationPointer.get('stationCode')); // Assuming stationPointer has code
+            }
+            assessment.set('source', 'json_import'); // 标记来源
+
+            // 保存 Assessment
+            const savedAssessment = await assessment.save();
+            console.log(`  Saved Assessment ${savedAssessment.id}`);
+            const assessmentPointer = AV.Object.createWithoutData('Assessment', savedAssessment.id);
+
+            // 创建 AssessmentDetail 对象
+            const detailsToSave = [];
+            if (record.questions && record.answers) {
+                record.questions.forEach((q, index) => {
+                    const answerData = record.answers[q.id];
+                    if (answerData) {
+                        const AssessmentDetail = AV.Object.extend('AssessmentDetail');
+                        const detail = new AssessmentDetail();
+                        detail.set('assessmentPointer', assessmentPointer);
+                        
+                        // **** 修改：处理 questionId 类型 ****
+                        let questionIdNum;
+                        try {
+                            if (q.id === undefined || q.id === null) {
+                                throw new Error('Question ID is missing');
+                            }
+                            questionIdNum = parseInt(q.id, 10);
+                            if (isNaN(questionIdNum)) {
+                                throw new Error(`Question ID '${q.id}' is not a valid number.`);
+                            }
+                        } catch(e) {
+                            console.error(`[processAndUploadRecords] Invalid Question ID found: ${q.id}. Skipping detail. Error: ${e.message}`);
+                            // **** 修改：使用 return 跳过 forEach 的当前迭代 ****
+                            return; // 跳过这个错误的 detail 记录
+                        }
+                        detail.set('questionId', questionIdNum); // **** 使用数字保存 ****
+                        
+                        detail.set('questionContent', q.content);
+                        detail.set('standardScore', q.standardScore);
+                        
+                        // **** 修改：处理 standardAnswer 类型 ****
+                        let standardAnswerValue = q.standardAnswer;
+                        if (typeof standardAnswerValue === 'string') {
+                            // 如果是字符串 (特别是 "")，但字段期望 Object，则设为 null
+                            // 或者如果有时标准答案会是 JSON 字符串，可以尝试解析：
+                            // try {
+                            //     standardAnswerValue = JSON.parse(standardAnswerValue);
+                            //     if (typeof standardAnswerValue !== 'object') standardAnswerValue = null;
+                            // } catch (e) {
+                            //      standardAnswerValue = null; 
+                            // }
+                            console.warn(`[processAndUploadRecords] Converting standardAnswer from String "${standardAnswerValue.substring(0, 50)}..." to null for Question ID ${q.id}`);
+                            standardAnswerValue = null; 
+                        }
+                        detail.set('standardAnswer', standardAnswerValue); // 使用处理后的值
+                        
+                        detail.set('section', q.section);
+                        detail.set('type', q.type);
+                        detail.set('knowledgeSource', q.knowledgeSource);
+                        detail.set('score', answerData.score);
+                        detail.set('comment', answerData.comment);
+                        detail.set('durationSeconds', answerData.duration);
+                        // detail.set('startTime', answerData.startTime ? new Date(answerData.startTime) : null); // Start time per question often not needed
+                        detail.set('questionOrder', index); // 保存题目顺序
+                        detailsToSave.push(detail);
+                    }
+                });
+            }
+
+            // 批量保存 AssessmentDetail
+            if (detailsToSave.length > 0) {
+                await AV.Object.saveAll(detailsToSave);
+                console.log(`  Saved ${detailsToSave.length} AssessmentDetail records.`);
+            }
+
+            successCount++;
+        } catch (error) {
+            console.error(`上传第 ${i + 1} 条记录 (${record.userInfo?.name}) 时失败:`, error);
+            errors.push(`记录 ${i + 1} (${record.userInfo?.name}): ${error.message}`);
+            errorCount++;
+            // 继续处理下一条记录
+        }
+    }
+
+    // 完成后的反馈
+    hideUploadProgress();
+    let finalMessage = `JSON 文件上传完成！\n成功上传 ${successCount} 条记录。`;
+    if (errorCount > 0) {
+        finalMessage += `\n失败 ${errorCount} 条记录。\n错误详情请查看浏览器控制台。`;
+        console.error("上传过程中的错误:", errors);
+        alert(finalMessage + '\n\n错误详情:\n' + errors.slice(0, 5).join('\n') + (errors.length > 5 ? '\n...' : ''));
+    } else {
+        alert(finalMessage);
+    }
+
+    // 刷新表格显示新数据
+    loadHistoryFromCloud(1);
+}
+
+// **** 新增：查找或创建用户 (修改为 UserProfile) ****
+async function findOrCreateUserProfile(userInfo) {
+    if (!userInfo || userInfo.employeeId === undefined || userInfo.employeeId === null) {
+        throw new Error("用户信息或工号缺失，无法查找或创建用户。");
+    }
+
+    // **** 修改：将 employeeId 转换为 Number ****
+    let employeeIdNum;
+    try {
+        employeeIdNum = parseInt(userInfo.employeeId, 10); // 尝试转换为数字
+        if (isNaN(employeeIdNum)) {
+            throw new Error(`工号 '${userInfo.employeeId}' 不是有效的数字。`);
+        }
+    } catch (e) {
+         throw new Error(`处理工号 '${userInfo.employeeId}' 时出错: ${e.message}`);
+    }
+
+    // 1. 按 employeeId (Number) 查找 UserProfile
+    const query = new AV.Query('UserProfile'); 
+    query.equalTo('employeeId', employeeIdNum); // **** 使用数字比较 ****
+    query.include('stationPointer'); 
+    query.include('positionPointer');
+    let userProfile = await query.first();
+
+    if (userProfile) {
+        console.log(`  Found existing UserProfile: ${userProfile.id} for employeeId: ${employeeIdNum}`);
+        return userProfile; 
+    } else {
+        console.log(`  UserProfile with employeeId ${employeeIdNum} not found. Creating new UserProfile...`);
+        // 2. 创建新 UserProfile
+        const UserProfile = AV.Object.extend('UserProfile');
+        const newUserProfile = new UserProfile();
+        newUserProfile.set('name', userInfo.name || `员工${employeeIdNum}`);
+        newUserProfile.set('employeeId', employeeIdNum); // **** 使用数字保存 ****
+        
+        const stationPointer = await findOrCreateStation(userInfo.station);
+        const positionPointer = await findOrCreatePosition(userInfo.position);
+        if (stationPointer) newUserProfile.set('stationPointer', stationPointer);
+        if (positionPointer) newUserProfile.set('positionPointer', positionPointer);
+
+        try {
+            await newUserProfile.save(); 
+            console.log(`  Created new UserProfile: ${newUserProfile.id}`);
+            return newUserProfile; 
+        } catch (error) {
+            console.error("创建新 UserProfile 时出错:", error);
+            throw new Error(`创建 UserProfile 失败: ${error.message}`);
+        }
+    }
+}
+
+// **** 新增：查找或创建站点 ****
+async function findOrCreateStation(stationCode) {
+    if (!stationCode) return null; // 如果没有提供 stationCode，则不处理
+
+    const query = new AV.Query('Station');
+    query.equalTo('stationCode', stationCode);
+    let station = await query.first();
+
+    if (station) {
+        console.log(`  Found existing Station: ${station.id} for code: ${stationCode}`);
+        return station; // 返回找到的站点对象 (Pointer)
+    } else {
+        console.log(`  Station with code ${stationCode} not found. Creating new station...`);
+        const Station = AV.Object.extend('Station');
+        const newStation = new Station();
+        newStation.set('stationCode', stationCode);
+        // **** 尝试从已知映射获取名称，否则使用 code 作为 name ****
+        const stationMap = { /* ... 你的站点代码到名称的映射 ... */
+             'grand_hall': '大礼堂', 'seven_hills': '七星岗', 'houbao': '后堡', 
+             'wanshou': '万寿路', 'nanhu': '南湖', 'lanhua': '兰花路'
+        }; 
+        newStation.set('stationName', stationMap[stationCode] || stationCode); 
+        try {
+            await newStation.save();
+            console.log(`  Created new Station: ${newStation.id} with name ${newStation.get('stationName')}`);
+            return newStation;
+        } catch (error) {
+            console.error("创建新站点时出错:", error);
+            throw new Error(`创建站点失败: ${error.message}`);
+        }
+    }
+}
+
+// **** 新增：查找或创建岗位 ****
+async function findOrCreatePosition(positionCode) {
+    if (!positionCode) return null; // 如果没有提供 positionCode，则不处理
+
+    const query = new AV.Query('Position');
+    query.equalTo('positionCode', positionCode);
+    let position = await query.first();
+
+    if (position) {
+        console.log(`  Found existing Position: ${position.id} for code: ${positionCode}`);
+        return position; // 返回找到的岗位对象 (Pointer)
+    } else {
+        console.log(`  Position with code ${positionCode} not found. Creating new position...`);
+        const Position = AV.Object.extend('Position');
+        const newPosition = new Position();
+        newPosition.set('positionCode', positionCode);
+        // **** 尝试从已知映射获取名称，否则使用 code 作为 name ****
+        const positionMap = { /* ... 你的岗位代码到名称的映射 ... */
+             'duty_station': '值班站长', 'station_duty': '车站值班员', 'station_safety': '站务安全员'
+         }; 
+        newPosition.set('positionName', positionMap[positionCode] || positionCode);
+        try {
+            await newPosition.save();
+            console.log(`  Created new Position: ${newPosition.id} with name ${newPosition.get('positionName')}`);
+            return newPosition;
+        } catch (error) {
+            console.error("创建新岗位时出错:", error);
+            throw new Error(`创建岗位失败: ${error.message}`);
+        }
     }
 }
