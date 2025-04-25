@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>个人中心 - 评分系统</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.7.2/font/bootstrap-icons.css" rel="stylesheet">
+    <link href="css/style.css" rel="stylesheet">
+    <!-- **** 引入 history.html 的样式 **** -->
+    <style>
+        .page-main-title {
+            font-size: 2.5rem;
+            font-weight: bold;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-top: 1.5rem;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.5rem;
+            display: inline-block;
+        }
+        .purple-accent-line {
+            height: 4px;
+            background: linear-gradient(90deg, #7928ca, #6f42c1);
+            width: 80px;
+            border-radius: 2px;
+            margin-bottom: 2rem;
+        }
+        /* 如果需要其他 history.html 的通用样式，可以在这里添加 */
+    </style>
+</head>
+<body>
+    <!-- **** 使用 history.html 的导航栏结构 **** -->
+    <div class="container mt-4">
+        <nav class="page-navigation-metro">
+            <ul>
+                <li class="station">
+                    <a href="assessment.html" class="station-link" title="开始测评">
+                        <span class="station-icon"><i class="bi bi-pencil-square"></i></span>
+                        <span class="station-label">开始测评</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="history.html" class="station-link requires-login" title="历史记录">
+                        <span class="station-icon"><i class="bi bi-clock-history"></i></span>
+                        <span class="station-label">历史记录</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="analysis.html" class="station-link requires-login" title="数据分析">
+                        <span class="station-icon"><i class="bi bi-bar-chart-line-fill"></i></span>
+                        <span class="station-label">数据分析</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station">
+                    <a href="question-bank.html" class="station-link requires-login" title="题库管理">
+                        <span class="station-icon"><i class="bi bi-archive"></i></span>
+                        <span class="station-label">题库管理</span>
+                    </a>
+                </li>
+                <li class="line"></li>
+                <li class="station user-auth-station logged-out-item" style="margin-left: auto;">
+                    <a href="#" id="loginButton" class="station-link" title="登录/注册">
+                        <span class="station-icon"><i class="bi bi-person-circle"></i></span>
+                        <span class="station-label">登录/注册</span>
+                    </a>
+                </li>
+                <li class="station user-auth-station logged-in-item active-station" style="margin-left: auto; display: none;"> <!-- 设置为 active-station -->
+                    <a id="userCenterLink" href="user_center.html" class="station-link" title="个人中心">
+                        <span class="station-icon"><i class="bi bi-person-check-fill"></i></span>
+                        <span class="station-label" id="loggedInUserLabel">个人中心</span>
+                    </a>
+                </li>
+            </ul>
+        </nav>
+
+        <!-- 登录/注册模态框 (保持不变，由 main.js 控制) -->
+        <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title" id="loginModalLabel">登录 / 注册</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                    </div>
+                    <div class="modal-body">
+                        <!-- 错误提示区域 -->
+                        <div class="alert alert-danger d-none" id="authErrorAlert" role="alert"></div>
+                        <!-- 登录表单 (默认显示) -->
+                        <form id="loginForm">
+                            <div class="mb-3">
+                                <label for="loginEmail" class="form-label">邮箱</label>
+                                <input type="email" class="form-control" id="loginEmail" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="loginPassword" class="form-label">密码</label>
+                                <input type="password" class="form-control" id="loginPassword" required>
+                            </div>
+                            <div class="text-end mt-2">
+                                <a href="#" id="forgotPasswordLink" class="small">忘记密码？</a>
+                            </div>
+                            <button type="button" class="btn btn-primary w-100 mt-3" id="loginSubmitButton">登录</button>
+                            <p class="mt-3 text-center small">还没有账户？ <a href="#" id="switchToRegisterLink">立即注册</a></p>
+                        </form>
+                        <!-- 注册表单 (默认隐藏) -->
+                        <form id="registerForm" class="d-none">
+                            <div class="mb-3">
+                                <label for="registerEmail" class="form-label">邮箱</label>
+                                <input type="email" class="form-control" id="registerEmail" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="registerUsername" class="form-label">用户名 (可选)</label>
+                                <input type="text" class="form-control" id="registerUsername">
+                            </div>
+                            <div class="mb-3">
+                                <label for="registerPassword" class="form-label">密码</label>
+                                <input type="password" class="form-control" id="registerPassword" required>
+                            </div>
+                            <div class="mb-3">
+                                <label for="registerConfirmPassword" class="form-label">确认密码</label>
+                                <input type="password" class="form-control" id="registerConfirmPassword" required>
+                            </div>
+                            <button type="button" class="btn btn-success w-100 mt-3" id="registerSubmitButton">注册</button>
+                            <p class="mt-3 text-center small">已有账户？ <a href="#" id="switchToLoginLink">返回登录</a></p>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- **** 应用与其他页面一致的标题结构 **** -->
+        <div class="d-flex justify-content-between align-items-center mb-3 mt-4">
+            <div class="title-container">
+                <h2 class="page-main-title"><i class="bi bi-person-badge me-2"></i>个人中心</h2>
+                <div class="purple-accent-line"></div>
+            </div>
+        </div>
+        <!-- **** 结束标题结构 **** -->
+
+        <!-- **** 将内容包裹在 card 中 **** -->
+        <div class="card shadow-sm mb-4">
+            <div class="card-body">
+                <div id="userInfoDisplay" style="display: none;">
+                    <h5 class="card-title mb-3">用户信息</h5>
+                    <dl class="row">
+                        <dt class="col-sm-3">标识:</dt>
+                        <dd class="col-sm-9"><span id="userIdentifier">加载中...</span></dd>
+
+                        <dt class="col-sm-3">内部 ID:</dt>
+                        <dd class="col-sm-9"><code id="userObjectId"></code></dd>
+
+                        <dt class="col-sm-3">注册时间:</dt>
+                        <dd class="col-sm-9"><span id="userCreatedAt"></span></dd>
+
+                        <dt class="col-sm-3">最后更新:</dt>
+                        <dd class="col-sm-9"><span id="userUpdatedAt"></span></dd>
+                    </dl>
+                    <hr>
+                    <div id="userActions">
+                        <button id="logoutButton" class="btn btn-outline-danger"><i class="bi bi-box-arrow-right me-2"></i>退出登录</button>
+                        <!-- 其他按钮可以在这里添加 -->
+                    </div>
+                </div>
+
+                <div id="loggedOutMessage" class="alert alert-warning" style="display: none;">
+                    请先 <a href="#" onclick="showLoginModal()" class="alert-link">登录</a> 以查看个人中心。
+                </div>
+            </div>
+        </div>
+        <!-- **** 结束 card **** -->
+
+    </div> <!-- 关闭主 container -->
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="//cdn.jsdelivr.net/npm/leancloud-storage@4/dist/av-min.js"></script>
+    <script src="js/main.js"></script>
+    <script src="js/user_center.js"></script>
+
+</body>
+</html> 

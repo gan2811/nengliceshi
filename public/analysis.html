@@ -94,34 +94,40 @@
                 </li>
                 <li class="line"></li>
                 <li class="station">
-                    <a href="history.html" class="station-link" title="历史记录">
+                    <a href="history.html" class="station-link requires-login" title="历史记录">
                         <span class="station-icon"><i class="bi bi-clock-history"></i></span>
                         <span class="station-label">历史记录</span>
                     </a>
                 </li>
                 <li class="line"></li>
-                <li class="station active-station"> <!-- Analysis is active -->
-                    <a href="analysis.html" class="station-link" title="数据分析">
+                <li class="station active-station">
+                    <a href="analysis.html" class="station-link requires-login" title="数据分析">
                         <span class="station-icon"><i class="bi bi-bar-chart-line-fill"></i></span>
                         <span class="station-label">数据分析</span>
                     </a>
                 </li>
                 <li class="line"></li>
                 <li class="station">
-                    <a href="question-bank.html" class="station-link" title="题库管理">
+                    <a href="question-bank.html" class="station-link requires-login" title="题库管理">
                         <span class="station-icon"><i class="bi bi-archive"></i></span>
                         <span class="station-label">题库管理</span>
                     </a>
                 </li>
-                <!-- **** MODIFIED: User Auth Station **** -->
                 <li class="line"></li>
-                <li class="station user-auth-station" style="margin-left: auto;"> <!-- Keep push right -->
-                    <a href="#" id="authLink" class="station-link" title="用户状态"> <!-- Link for interaction -->
-                        <span class="station-icon" id="authIconContainer"><i id="authIcon" class="bi bi-person-circle"></i></span> <!-- User icon -->
-                        <span class="station-label" id="authLabel">登录</span> <!-- Label: Default '登录' -->
+                <!-- **** NEW User Auth Section **** -->
+                <li class="station user-auth-station logged-out-item" style="margin-left: auto;">
+                    <a href="#" id="loginButton" class="station-link" title="登录/注册">
+                        <span class="station-icon"><i class="bi bi-person-circle"></i></span>
+                        <span class="station-label">登录/注册</span>
                     </a>
                 </li>
-                <!-- **** END MODIFIED **** -->
+                <li class="station user-auth-station logged-in-item active-station" style="margin-left: auto; display: none;">
+                    <a id="userCenterLink" href="user_center.html" class="station-link" title="个人中心">
+                        <span class="station-icon"><i class="bi bi-person-check-fill"></i></span>
+                        <span class="station-label" id="loggedInUserLabel">个人中心</span>
+                    </a>
+                </li>
+                <!-- **** END NEW User Auth Section **** -->
             </ul>
         </nav>
         
@@ -343,6 +349,52 @@
         </div>
     </div>
 
+    <!-- **** MODIFIED: Combined Login/Register Modal **** -->
+    <div class="modal fade" id="loginModal" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="loginModalLabel">请登录</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="alert alert-danger d-none" role="alert" id="authErrorAlert"></div>
+                    <form id="authForm">
+                        <div class="mb-3">
+                            <label for="loginEmail" class="form-label">邮箱</label>
+                            <input type="email" class="form-control" id="loginEmail" required autocomplete="email">
+                        </div>
+                        <div class="mb-3">
+                            <label for="loginPassword" class="form-label">密码</label>
+                            <input type="password" class="form-control" id="loginPassword" required autocomplete="current-password">
+                        </div>
+                        <!-- **** 新增：忘记密码链接 **** -->
+                        <div class="text-end mb-3">
+                             <a href="#" id="forgotPasswordLink" class="small text-decoration-none">忘记密码？</a>
+                        </div>
+                        <!-- Registration Only Field -->
+                        <div class="mb-3 registration-field d-none">
+                            <label for="registerConfirmPassword" class="form-label">确认密码</label>
+                            <input type="password" class="form-control" id="registerConfirmPassword" required minlength="6" autocomplete="new-password">
+                        </div>
+                    </form>
+                </div>
+                <div class="modal-footer justify-content-between">
+                    <div>
+                        <a href="#" id="switchToRegisterLink" class="small text-decoration-none">还没有账号？点击注册</a>
+                        <a href="#" id="switchToLoginLink" class="small text-decoration-none d-none">已有账号？返回登录</a>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">关闭</button>
+                        <button type="button" class="btn btn-primary login-button" id="loginSubmitButton">登录</button>
+                        <button type="button" class="btn btn-primary registration-button d-none" id="registerSubmitButton">注册</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- **** END MODIFIED: Combined Modal **** -->
+
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/leancloud-storage@4.13.1/dist/av-min.js"></script>
@@ -460,8 +512,16 @@
                 positionPlaceholder.style.display = 'none';
                 // Load employee list if needed
                 const employeeSelect = document.getElementById('employeeSelect');
+                if (employeeSelect) {
+                    console.log(`[Tab Switch] Employee select found. Options count: ${employeeSelect.options.length}`);
+                } else {
+                    console.error("[Tab Switch] Employee select element NOT found!");
+                }
                 if (employeeSelect && employeeSelect.options.length <= 1) {
+                    console.log("[Tab Switch] Employee list needs loading. Calling loadEmployeeList()...");
                     loadEmployeeList();
+                } else {
+                    console.log("[Tab Switch] Employee list already populated or element missing. Skipping loadEmployeeList().");
                 }
                  // Ensure placeholder visibility is correct
                  if (individualContent.style.display !== 'none') {

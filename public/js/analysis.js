@@ -57,7 +57,7 @@ function clearAnalysisDisplay() {
 
 // **** 新增：加载岗位列表到下拉框 ****
 function loadPositionList() {
-    console.log("[loadPositionList] Function called."); // ADDED LOG
+    // console.log("[loadPositionList] Function called."); // ADDED LOG
     const positionSelect = document.getElementById('positionSelect'); // 岗位分析用
     const employeePositionSelect = document.getElementById('employeePosition'); // 个人分析用
 
@@ -65,21 +65,21 @@ function loadPositionList() {
         console.error("[loadPositionList] 错误：找不到岗位选择下拉框元素。");
         return;
     }
-    console.log("[loadPositionList] Found dropdown elements."); // ADDED LOG
+    // console.log("[loadPositionList] Found dropdown elements."); // ADDED LOG
 
     // 清空现有选项 (保留默认的 "全部岗位")
     positionSelect.innerHTML = '<option value="all">全部岗位</option>';
     employeePositionSelect.innerHTML = '<option value="all">全部岗位</option>';
 
     try {
-        console.log("[loadPositionList] Trying to load assessmentHistory..."); // ADDED LOG
+        // console.log("[loadPositionList] Trying to load assessmentHistory..."); // ADDED LOG
         const allHistoryStr = localStorage.getItem('assessmentHistory'); // ADDED intermediate variable
         if (!allHistoryStr) {
-            console.warn("[loadPositionList] assessmentHistory is null or empty in localStorage."); // ADDED LOG
+            // console.warn("[loadPositionList] assessmentHistory is null or empty in localStorage."); // ADDED LOG
             return; // Exit if no history
         }
         const allHistory = JSON.parse(allHistoryStr || '[]');
-        console.log(`[loadPositionList] Parsed ${allHistory.length} history records.`); // ADDED LOG
+        // console.log(`[loadPositionList] Parsed ${allHistory.length} history records.`); // ADDED LOG
 
         const uniquePositions = {}; // Use an object to store unique positions { code: name }
 
@@ -98,7 +98,7 @@ function loadPositionList() {
                  // console.warn(`[loadPositionList] Record ${index} missing position field:`, record); // Optional detailed log
             }
         });
-        console.log("[loadPositionList] Collected unique positions:", uniquePositions); // ADDED LOG
+        // console.log("[loadPositionList] Collected unique positions:", uniquePositions); // ADDED LOG
 
         let positionCount = 0;
         // Populate dropdowns using the collected unique positions
@@ -113,15 +113,15 @@ function loadPositionList() {
                 positionCount++;
             }
         }
-        console.log(`[loadPositionList] Added ${positionCount} position options to dropdowns.`); // ADDED LOG
+        // console.log(`[loadPositionList] Added ${positionCount} position options to dropdowns.`); // ADDED LOG
 
         if (positionCount === 0) {
-            console.warn("[loadPositionList] No unique positions found after processing history.");
+            // console.warn("[loadPositionList] No unique positions found after processing history.");
         }
     } catch (error) {
         console.error("[loadPositionList] Error during processing:", error); // ADDED LOG
     }
-    console.log("[loadPositionList] Function finished."); // ADDED LOG
+    // console.log("[loadPositionList] Function finished."); // ADDED LOG
 }
 // **** 结束新增函数 ****
 
@@ -902,18 +902,18 @@ function calculateIndividualQuestionPerformance(record) {
              }
              questionInfo.comment = answer.comment || '';
 
-             // **** 新的判断逻辑 ****
+             // **** 恢复原始判断逻辑 ****
              if (standardScore > 0) {
                  if (questionInfo.score !== null) { // 必须有有效得分才能计算比率
                      const scoreRate = (questionInfo.score / standardScore) * 100;
-                     if (scoreRate < 60) { // 低于 60% 的放入待提高
+                     if (scoreRate < 70) { // 低于 70% 的放入待提高 (使用之前的阈值或根据需要调整)
                          performance.worst.push(questionInfo);
-                     } else { // 大于等于 60% 的放入掌握较好
-                 performance.best.push(questionInfo);
+                     } else { // 大于等于 70% 的放入掌握较好
+                         performance.best.push(questionInfo);
                      }
                  } else { // 分数无效或为 null (可能发生在导入或旧数据)，归为待提高
-                 performance.worst.push(questionInfo);
-             }
+                     performance.worst.push(questionInfo);
+                 }
              } else { // 标准分为0或无效，归为待提高
                  performance.worst.push(questionInfo);
              }
@@ -1166,7 +1166,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
             let questionListHTML = criticalQuestions.slice(0, 3).map(q => { // 最多显示3个
                 const scoreText = q.score === '未作答' ? '<span class="badge bg-danger">未作答</span>' : `<span class="badge bg-danger">${q.score}/${q.standardScore}</span>`;
                 // **** 新增日志：检查 knowledgeSource ****
-                console.log(`[Suggestion Gen] Critical Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
+                // console.log(`[Suggestion Gen] Critical Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
                 const sourceText = q.knowledgeSource 
                                    ? `，建议<strong class="text-danger">重点复习《${q.knowledgeSource}》</strong>相关内容` 
                                    : '，建议<strong class="text-danger">查找相关资料重点复习</strong>';
@@ -1183,7 +1183,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
             let questionListHTML = weakQuestions.slice(0, 3).map(q => {
                 const scoreText = `<span class="badge bg-warning">${q.score}/${q.standardScore}</span>`;
                  // **** 新增日志：检查 knowledgeSource ****
-                 console.log(`[Suggestion Gen] Weak Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
+                 // console.log(`[Suggestion Gen] Weak Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
                  const sourceText = q.knowledgeSource 
                                    ? `，建议<strong class="text-warning">参考《${q.knowledgeSource}》加深理解</strong>` 
                                    : '，建议<strong class="text-warning">对照标准答案加深理解</strong>';
@@ -1590,18 +1590,23 @@ function loadEmployeeAssessments() {
                  console.error(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id} 时发现缺少 userInfo 对象! 跳过此记录。`);
                  return false; 
              }
-             const recordEmployeeId = record.userInfo.employeeId || record.userInfo.id; 
+             // **** 修改：使用 UserProfile 的 objectId 进行比较 ****
+             // const recordEmployeeId = record.userInfo.employeeId || record.userInfo.id; 
+             const recordUserProfileId = record.userInfo.id || record.userInfo.objectId; // 尝试获取 UserProfile 的 objectId
+             
              // **** Add specific check for missing ID within userInfo ****
-             if (recordEmployeeId === undefined || recordEmployeeId === null) {
-                 console.error(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id} 时发现 userInfo 中缺少 employeeId 或 id! 跳过此记录。`);
+             if (recordUserProfileId === undefined || recordUserProfileId === null) {
+                 console.error(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id} 时发现 userInfo 中缺少 id 或 objectId! 跳过此记录。`);
                  return false;
              }
 
-             const match = recordEmployeeId == selectedEmployeeId; // Use == for potential type difference
-             console.log(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id}, ` +
-                         `记录中的员工ID: '${recordEmployeeId}' (类型: ${typeof recordEmployeeId}), ` +
-                         `目标员工ID: '${selectedEmployeeId}' (类型: ${typeof selectedEmployeeId}), ` +
-                         `匹配结果: ${match}`);
+             // **** 修改：进行 objectId (字符串) 的比较 ****
+             const match = recordUserProfileId === selectedEmployeeId; 
+             // **** 更新日志以反映新的比较 ****
+             // console.log(`[loadEmployeeAssessments]   检查记录 ID: ${record?.id}, ` +
+             //             `记录中的 UserProfile ID: '${recordUserProfileId}' (类型: ${typeof recordUserProfileId}), ` +
+             //             `目标员工(下拉框值): '${selectedEmployeeId}' (类型: ${typeof selectedEmployeeId}), ` +
+             //             `匹配结果: ${match}`);
              return match;
          })
         .sort((a, b) => (new Date(b.timestamp || b.endTime)) - (new Date(a.timestamp || a.endTime)));
@@ -1691,7 +1696,8 @@ function loadIndividualAnalysisFromSelection() {
         // 综合分析：筛选该员工的所有记录
         // // // console.log(`[loadIndividualAnalysisFromSelection] Filtering for ALL records of employee ${selectedEmployeeId}...`);
         recordsToAnalyze = allHistory
-            .filter(record => record?.userInfo?.employeeId == selectedEmployeeId) // Use == for employeeId too, just in case
+            // **** 修改：使用 UserProfile ID (id 或 objectId) 进行筛选 ****
+            .filter(record => (record?.userInfo?.id || record?.userInfo?.objectId) === selectedEmployeeId) 
             .sort((a, b) => new Date(a.timestamp || a.endTime) - new Date(b.timestamp || b.endTime)); // Sort oldest to newest for trend charts
         
         // // // console.log(`[loadIndividualAnalysisFromSelection] Found ${recordsToAnalyze.length} records for combined analysis.`);
@@ -2038,19 +2044,24 @@ function generateCombinedTrainingSuggestions(records) { /* ... implement ... */
 
 // 渲染题目列表 
 function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
-    // // // // // // // // console.log(`[renderQuestionPerformanceLists] START. List ID: ${listId}, isCombined: ${isCombined}. Data:`, questions);
     const listElement = document.getElementById(listId);
     if (!listElement) {
         console.error(`[renderQuestionPerformanceLists] ERROR: Cannot find list element with ID: ${listId}`);
         return;
     }
-    // // // // // // // console.log(`[renderQuestionPerformanceLists] Found list element:`, listElement);
-    listElement.innerHTML = ''; // Clear previous items
+    listElement.innerHTML = '';
+
+    // **** 添加调试日志 ****
+    console.log(`[DEBUG renderQPL] Rendering for listId: '${listId}', isCombined: ${isCombined}`);
+    // **** 修改：使用小写转换进行不区分大小写的检查 ****
+    const checkWorst = listId.toLowerCase().includes('worst'); 
+    console.log(`[DEBUG renderQPL] Does listId ('${listId.toLowerCase()}') include 'worst'? ${checkWorst}`); // 更新日志检查
+    const badgeBgClass = checkWorst ? 'bg-danger' : 'bg-success';
+    console.log(`[DEBUG renderQPL] Determined badge class: '${badgeBgClass}'`);
+    // **** 结束调试日志 ****
 
     if (!questions || questions.length === 0) {
         listElement.innerHTML = '<li class="list-group-item text-muted small">无相关题目</li>';
-        console.log(`[renderQuestionPerformanceLists] No questions to display for ${listId}.`);
-        console.log(`[renderQuestionPerformanceLists] END for ${listId}.`);
         return;
     }
 
@@ -2060,24 +2071,23 @@ function renderQuestionPerformanceLists(questions, listId, isCombined = false) {
             li.className = 'list-group-item small d-flex justify-content-between align-items-center';
             let text = q.content || '无内容';
             let scoreInfo = '';
+            
             if (isCombined) {
-                scoreInfo = `<span class="badge bg-secondary rounded-pill">平均: ${q.avgScoreRate !== undefined ? q.avgScoreRate + '%' : 'N/A'} (出现 ${q.appearances || 0}次)</span>`;
+                scoreInfo = `<span class="badge ${badgeBgClass} rounded-pill">平均: ${q.avgScoreRate !== undefined ? q.avgScoreRate + '%' : 'N/A'} (出现 ${q.appearances || 0}次)</span>`;
             } else {
                 const score = q.score !== undefined ? q.score : 'N/A';
                 const standardScore = q.standardScore !== undefined ? q.standardScore : 'N/A';
-                // **** 修改：如果是待提高列表，使用红色背景 ****
-                const badgeBgClass = listId.includes('Worst') ? 'bg-danger' : 'bg-secondary';
                 scoreInfo = `<span class="badge ${badgeBgClass} rounded-pill">${score} / ${standardScore}</span>`;
             }
+            // **** 添加调试日志 ****
+            // console.log(`[DEBUG renderQPL] Final scoreInfo HTML for item ${index}: ${scoreInfo}`); 
+            // **** 结束调试日志 ****
             li.innerHTML = `<span>${text}</span> ${scoreInfo}`;
             listElement.appendChild(li);
-            // // // // // // // // console.log(`[renderQuestionPerformanceLists] Appended item ${index + 1} to ${listId}`); // Optional: log each item append
         });
-        // // // // // // // // console.log(`[renderQuestionPerformanceLists] Successfully rendered ${questions.length} items to ${listId}.`);
     } catch (error) {
         console.error(`[renderQuestionPerformanceLists] ERROR rendering list ${listId}:`, error);
     }
-    console.log(`[renderQuestionPerformanceLists] END for ${listId}.`);
 }
 
 // 渲染历史成绩图表
@@ -2159,8 +2169,8 @@ function renderTrainingSuggestions(suggestions, listId) {
 
     if (!suggestions || suggestions.length === 0) {
         listElement.innerHTML = '<li class="list-group-item"><i class="bi bi-check-lg text-success me-2"></i>暂无特别建议。</li>';
-        console.log(`[renderTrainingSuggestions] No suggestions to display for ${listId}.`);
-        console.log(`[renderTrainingSuggestions] END for ${listId}.`);
+        // console.log(`[renderTrainingSuggestions] No suggestions to display for ${listId}.`);
+        // console.log(`[renderTrainingSuggestions] END for ${listId}.`);
         return;
     }
 
@@ -2185,7 +2195,7 @@ function renderTrainingSuggestions(suggestions, listId) {
     } catch (error) {
         console.error(`[renderTrainingSuggestions] ERROR rendering list ${listId}:`, error);
     }
-    console.log(`[renderTrainingSuggestions] END for ${listId}.`);
+    // console.log(`[renderTrainingSuggestions] END for ${listId}.`);
 }
 
 // 清除图表 (保持不变)
@@ -2211,67 +2221,27 @@ function clearIndividualAnalysis() { /* ... */ }
 // ... (其他可能存在的 Helper Functions) ...
 
 // **** 新增：根据岗位筛选员工的函数 ****
-function filterEmployeesByPosition() {
-    console.log("[filterEmployeesByPosition] 开始根据岗位筛选员工..."); // Start Log
-    const employeeSelect = document.getElementById('employeeSelect');
-    const positionFilterSelect = document.getElementById('employeePosition');
-    
-    if (!employeeSelect || !positionFilterSelect) {
-        console.error("[filterEmployeesByPosition] 找不到 employeeSelect 或 employeePosition 元素.");
-        return;
-    }
-
-    const positionFilter = positionFilterSelect.value;
-    // **** Log filter value ****
-    console.log(`[filterEmployeesByPosition] 当前选择的岗位筛选器值 (positionFilter): '${positionFilter}'`);
-
-    // 清空现有选项
-    employeeSelect.innerHTML = '<option value="">-- 请选择员工 --</option>';
-    
-    // 确保 allEmployees 已被填充
+function filterEmployeesByPosition(positionId) {
+    // console.log("[filterEmployeesByPosition] 开始根据岗位筛选员工..."); // Start Log
+    const filteredEmployees = [];
     if (!allEmployees || allEmployees.length === 0) {
-        console.warn("[filterEmployeesByPosition] allEmployees 数组为空或未定义，无法筛选。");
-        // ... (display message in dropdown)
-        return; 
-    }
-    
-    // **** Log allEmployees before filtering ****
-    console.log("[filterEmployeesByPosition] 用于筛选的 allEmployees 数组:", JSON.parse(JSON.stringify(allEmployees))); // Deep copy for logging
-
-    // 筛选员工
-    const filteredEmployees = positionFilter === 'all' 
-        ? allEmployees 
-        : allEmployees.filter(employee => {
-            const empPos = employee.position || '';
-            const match = empPos === positionFilter;
-            // **** Log filter check ****
-            console.log(`[filterEmployeesByPosition]   检查员工: ID='${employee.id}', 姓名='${employee.name}', 存储的岗位='${empPos}'. ` +
-                        `与筛选器 '${positionFilter}' 匹配: ${match}`);
-            return match;
-          });
-    
-    // **** Log filtered result ****
-    console.log(`[filterEmployeesByPosition] 筛选结果 (filteredEmployees) 包含 ${filteredEmployees.length} 个员工:`, JSON.parse(JSON.stringify(filteredEmployees)));
-
-    if (filteredEmployees.length === 0) {
-        // ... (display 'not found' message) ...
-    } else {
-        // 按姓名排序
-        filteredEmployees.sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'));
-        
-        // 添加到下拉列表
-        filteredEmployees.forEach(employee => {
-            // **** Log adding option ****
-            console.log(`[filterEmployeesByPosition]   -> 添加选项到下拉框: ID='${employee.id}', 姓名='${employee.name}'`);
-            const option = document.createElement('option');
-            option.value = employee.id; 
-            option.textContent = `${employee.name} (${employee.id})`;
-            employeeSelect.appendChild(option);
-        });
+        // console.warn("[filterEmployeesByPosition] allEmployees 数组为空或未定义，无法筛选。");
+        return filteredEmployees;
     }
 
-     // ... (clear analysis, reset record select) ...
-     console.log("[filterEmployeesByPosition] 结束."); // End Log
+    // 如果选择"全部岗位"，则不过滤
+    // console.log("[filterEmployeesByPosition] 选择的是 'all'，返回所有员工。");
+    filteredEmployees.push(...allEmployees);
+
+    // console.log("[filterEmployeesByPosition] 用于筛选的 allEmployees 数组:", JSON.parse(JSON.stringify(allEmployees))); // Deep copy for logging
+    // console.log("[filterEmployeesByPosition] 最终筛选出的员工:", JSON.parse(JSON.stringify(filteredEmployees))); // Deep copy for logging
+
+    // 按照员工 ID 排序 (可选)
+    // ... existing code ...
+    // });
+
+    // console.log("[filterEmployeesByPosition] 结束."); // End Log
+    return filteredEmployees;
 }
 
 // --- Helper Functions ---
@@ -2459,15 +2429,15 @@ function analyzeOverallQuestionPerformance(records) {
     const best = performanceList.slice(0, 3);
     const worst = performanceList.slice(-3).reverse(); // Get last 3 and reverse to show lowest first
     
-    console.log("[analyzeOverallQuestionPerformance] Best performing questions (overall):", best);
-    console.log("[analyzeOverallQuestionPerformance] Worst performing questions (overall):", worst);
+    // console.log("[analyzeOverallQuestionPerformance] Best performing questions (overall):", best);
+    // console.log("[analyzeOverallQuestionPerformance] Worst performing questions (overall):", worst);
     
     return { best, worst };
 }
 
 // **** Add definition for generateOverallTrainingSuggestions ****
 function generateOverallTrainingSuggestions(avgSectionRates) {
-    console.log("[generateOverallTrainingSuggestions] Generating suggestions based on average rates:", avgSectionRates);
+    // console.log("[generateOverallTrainingSuggestions] Generating suggestions based on average rates:", avgSectionRates);
     const suggestions = [];
     
     // Check if avgSectionRates is valid
@@ -2490,7 +2460,7 @@ function generateOverallTrainingSuggestions(avgSectionRates) {
         suggestions.push({ text: '各板块平均掌握情况均良好 (>=75%)，请继续保持！', type: 'success', icon: 'bi-check-circle-fill text-success' });
     }
     
-    console.log("[generateOverallTrainingSuggestions] Generated suggestions:", suggestions);
+    // console.log("[generateOverallTrainingSuggestions] Generated suggestions:", suggestions);
     return suggestions;
 }
 
@@ -2958,3 +2928,85 @@ function mergeDataById(storageKey, newDataArray) {
     }
     return { added, updated };
 }
+
+// **** Function to load the employee list ****
+async function loadEmployeeList() {
+    // **** 新增日志：函数开始 ****
+    // console.log("[loadEmployeeList] Function started.");
+    const employeeSelect = document.getElementById('employeeSelect');
+    const employeePositionFilter = document.getElementById('employeePosition').value;
+
+    if (!employeeSelect) {
+        console.error("[loadEmployeeList] Employee select dropdown not found.");
+        return;
+    }
+
+    // Clear existing options except the default
+    while (employeeSelect.options.length > 1) {
+        employeeSelect.remove(1);
+    }
+    employeeSelect.disabled = true; // Disable while loading
+
+    try {
+        const query = new AV.Query('UserProfile');
+        query.limit(1000); // Adjust limit as needed
+        query.select(['name', 'employeeId']); // Only fetch necessary fields
+        query.ascending('employeeId'); // Sort by employeeId
+
+        // Apply position filter if not 'all'
+        if (employeePositionFilter && employeePositionFilter !== 'all') {
+            // Assuming employeePositionFilter contains the position *code*
+            // Need to query Position table first to get the pointer
+            // console.log(`[loadEmployeeList] Filtering by position code: ${employeePositionFilter}`);
+            const positionQuery = new AV.Query('Position');
+            positionQuery.equalTo('positionCode', employeePositionFilter);
+            const positionObject = await positionQuery.first();
+            if (positionObject) {
+                 // console.log(`[loadEmployeeList] Found Position object: ${positionObject.id}`);
+                 query.equalTo('positionPointer', positionObject); // Filter UserProfile by pointer
+            } else {
+                console.warn(`[loadEmployeeList] Position code ${employeePositionFilter} not found in Position table. No employees will be listed.`);
+                query.equalTo('objectId', '__NEVER_MATCH__'); // Ensure no results if position not found
+            }
+        }
+
+        const users = await query.find();
+        
+        // **** 新增日志：打印查询结果数量 ****
+        // console.log(`[loadEmployeeList] Found ${users.length} user profiles.`);
+
+        if (users.length > 0) {
+             // **** 新增日志：开始填充 ****
+            // console.log("[loadEmployeeList] Starting to populate dropdown...");
+            users.forEach(user => {
+                const option = document.createElement('option');
+                const name = user.get('name') || '未命名';
+                const employeeId = user.get('employeeId') || '无工号';
+                option.value = user.id; // Use objectId as value
+                option.textContent = `${name} (${employeeId})`;
+                employeeSelect.appendChild(option);
+            });
+             // **** 新增日志：结束填充 ****
+            // console.log("[loadEmployeeList] Finished populating dropdown.");
+        } else {
+            // console.log("[loadEmployeeList] No users found matching criteria. Dropdown remains empty (except default). ");
+            // Optional: Add a disabled option indicating no users found
+            // const noUserOption = document.createElement('option');
+            // noUserOption.textContent = "未找到符合条件的员工";
+            // noUserOption.disabled = true;
+            // employeeSelect.appendChild(noUserOption);
+        }
+
+    } catch (error) {
+        // **** 新增日志：打印错误 ****
+        console.error("[loadEmployeeList] Error loading or processing employee list:", error);
+        // Optional: Display an error message to the user
+        // alert("加载员工列表失败，请检查网络连接或联系管理员。");
+    } finally {
+        employeeSelect.disabled = false; // Re-enable dropdown
+        // **** 新增日志：函数结束 ****
+        // console.log("[loadEmployeeList] Function finished.");
+    }
+}
+
+// **** Function to filter employees when position changes ****

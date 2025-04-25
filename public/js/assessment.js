@@ -78,25 +78,25 @@ document.addEventListener('DOMContentLoaded', async function() {
     // **** 2. 只有在未从本地恢复状态时，才检查 URL resumeId 或显示设置表单 ****
     if (!stateResumed) {
         console.log("[DOMContentLoaded] Local state not resumed. Checking URL resumeId or showing setup form..."); // **** 新增日志 ****
-        const urlParams = new URLSearchParams(window.location.search);
-        const resumeId = urlParams.get('resumeId');
+    const urlParams = new URLSearchParams(window.location.search);
+    const resumeId = urlParams.get('resumeId');
 
-        if (resumeId && currentUser) {
+    if (resumeId && currentUser) {
             console.log(`[assessment.js] No local state or user discarded. Found resumeId in URL: ${resumeId}. Attempting to resume from cloud.`);
             await checkResumableAssessment(resumeId); // 从云端恢复
-            hideLoading();
-        } else if (!currentUser) {
+        hideLoading();
+    } else if (!currentUser) {
             console.log("[assessment.js] No local state/resumeId. User not logged in. Showing setup form.");
-            document.getElementById('userInfoForm')?.classList.remove('d-none');
-            document.getElementById('assessmentArea')?.classList.add('d-none');
-            initializeForm();
-            hideLoading();
-        } else {
+        document.getElementById('userInfoForm')?.classList.remove('d-none');
+        document.getElementById('assessmentArea')?.classList.add('d-none');
+        initializeForm();
+        hideLoading();
+    } else {
             console.log(`[assessment.js] No local state/resumeId. User logged in: ${currentUser.getUsername()}. Showing setup form.`);
-            document.getElementById('userInfoForm')?.classList.remove('d-none');
-            document.getElementById('assessmentArea')?.classList.add('d-none');
+        document.getElementById('userInfoForm')?.classList.remove('d-none');
+        document.getElementById('assessmentArea')?.classList.add('d-none');
             initializeForm();
-            hideLoading();
+        hideLoading();
         }
     }
     // **** 结束条件检查 ****
@@ -156,7 +156,7 @@ function saveStateToLocalStorage() {
              let currentSessionDurationSeconds = 0;
              if (currentSessionStartTime) {
                  currentSessionDurationSeconds = Math.floor((new Date() - currentSessionStartTime) / 1000);
-             } else {
+    } else {
                  // 如果没有会话开始时间（可能发生在页面刚加载，计时器未启动时保存），则不增加时长
              }
              // 注意：这里不停止计时器，只累加时长用于保存。totalActiveSeconds 代表总共花费的时间
@@ -287,14 +287,36 @@ async function checkResumableAssessment(assessmentId = null) {
         }
     } catch (error) {
         console.error("Error checking resumable assessment:", error);
-        alert("加载暂停的测评失败: " + error.message);
-        // 出错也显示设置界面
-        document.getElementById('userInfoForm')?.classList.remove('d-none');
-        document.getElementById('assessmentArea')?.classList.add('d-none');
-        initializeForm(); // 确保表单初始化
+        // **** 修改: 提供更具体的错误提示 ****
+        let userMessage = "检查可恢复测评时出错，请稍后重试。";
+        // 尝试根据错误信息判断是否为权限问题
+        // 注意：error.code 可能不直接是 403，需要检查 LeanCloud 返回的具体错误结构
+        if (error && (error.code === 403 || (error.message && (error.message.includes('ACL') || error.message.includes('Forbidden'))))) {
+             userMessage = "无法恢复测评：无权限访问该测评记录或记录不存在。";
+        } else if (error && error.code === 500) {
+            // 保留对 500 错误的特定提示，但也可能是权限问题间接导致
+             userMessage = "无法恢复测评：服务器内部错误，可能无权限访问或记录不存在。";
+        } 
+        // else if (error.code === 404) { // 如果 LeanCloud 对未找到返回 404
+        //     userMessage = "无法恢复测评：未找到该测评记录。";
+        // }
+        showAssessmentError(userMessage);
+        return false;
     } finally {
         hideLoading(); // 确保隐藏加载提示
     }
+}
+
+// **** 新增：显示测评相关的错误信息 ****
+function showAssessmentError(message) {
+    console.error("Assessment Error Displayed:", message); // 同时在控制台记录错误
+    alert(message); // 使用 alert 弹窗显示错误
+    // TODO: 未来可以考虑将错误显示在页面的某个特定元素中，而不是用 alert
+    // const errorElement = document.getElementById('assessmentErrorArea');
+    // if (errorElement) {
+    //     errorElement.textContent = message;
+    //     errorElement.classList.remove('d-none');
+    // }
 }
 
 // **** 新增：简单的加载提示 ****
@@ -383,44 +405,44 @@ function getStationName(code) {
 
 // 初始化表单
 function initializeForm() {
-    console.log("[initializeForm] Starting..."); // Log start
+    // console.log("[initializeForm] Starting..."); // Log start
     const form = document.getElementById('basicInfoForm');
     if (form) {
-        form.addEventListener('submit', function(e) {
+    form.addEventListener('submit', function(e) {
             e.preventDefault(); 
-        });
+    });
     }
 
     // 动态加载岗位选项
     const positionDropdown = document.getElementById('position');
     if(positionDropdown) {
-        console.log("[initializeForm] Found position dropdown.");
+        // console.log("[initializeForm] Found position dropdown.");
         let questionBank = [];
         let positions = new Set();
         try {
             const storedBank = localStorage.getItem('questionBank');
-            console.log("[initializeForm] Raw questionBank from localStorage:", storedBank);
+            // console.log("[initializeForm] Raw questionBank from localStorage:", storedBank);
             if (!storedBank) {
-                console.warn("[initializeForm] questionBank is empty or not found in localStorage.");
+                // console.warn("[initializeForm] questionBank is empty or not found in localStorage.");
             } else {
                 questionBank = JSON.parse(storedBank || '[]'); // Parse here
-                console.log("[initializeForm] Parsed questionBank:", questionBank);
+                // console.log("[initializeForm] Parsed questionBank:", questionBank);
 
                 // Iterate and extract positions
                 questionBank.forEach((q, index) => {
-                    if (q.position && Array.isArray(q.position)) {
-                        q.position.forEach(p => {
-                            if (p && p !== 'all') { // 排除 'all'
-                                positions.add(p);
-                            }
-                        });
-                    } else if (q.position && typeof q.position === 'string' && q.position !== 'all') {
-                        positions.add(q.position); // 处理单个字符串岗位
-                    }
+        if (q.position && Array.isArray(q.position)) {
+            q.position.forEach(p => {
+                if (p && p !== 'all') { // 排除 'all'
+                    positions.add(p);
+                }
+            });
+        } else if (q.position && typeof q.position === 'string' && q.position !== 'all') {
+            positions.add(q.position); // 处理单个字符串岗位
+        }
                     // Optional: Log if a question doesn't contribute a valid position
                     // else { console.log(`[initializeForm] Question ${index} has no valid position:`, q.position); }
                 });
-                console.log("[initializeForm] Extracted unique positions:", positions);
+                // console.log("[initializeForm] Extracted unique positions:", positions);
             }
         } catch (e) {
             console.error("[initializeForm] Error parsing questionBank or extracting positions:", e);
@@ -430,47 +452,47 @@ function initializeForm() {
         }
 
         // Clear existing options (except the first placeholder)
-        while (positionDropdown.options.length > 1) {
-            positionDropdown.remove(1);
-        }
+    while (positionDropdown.options.length > 1) {
+        positionDropdown.remove(1);
+    }
 
         // Populate dropdown
         if (positions.size === 0) {
-            console.warn("[initializeForm] No valid positions found in the question bank (excluding 'all').");
+            // console.warn("[initializeForm] No valid positions found in the question bank (excluding 'all').");
             // Keep the default "请选择岗位" or add a specific message
             // positionDropdown.options[0].text = '题库中无可用岗位';
         } else {
-            console.log(`[initializeForm] Populating dropdown with ${positions.size} positions...`);
-            positions.forEach(pos => {
-                const option = document.createElement('option');
-                option.value = pos;
+            // console.log(`[initializeForm] Populating dropdown with ${positions.size} positions...`);
+    positions.forEach(pos => {
+        const option = document.createElement('option');
+        option.value = pos;
                 option.textContent = getPositionName(pos); // Use helper function for display name
-                console.log(`[initializeForm] Adding option: value='${pos}', text='${option.textContent}'`);
-                positionDropdown.appendChild(option);
-            });
+                // console.log(`[initializeForm] Adding option: value='${pos}', text='${option.textContent}'`);
+        positionDropdown.appendChild(option);
+    });
         }
 
         // Add event listener and trigger initial load
         positionDropdown.removeEventListener('change', loadSections); // Remove first to prevent duplicates
-        positionDropdown.addEventListener('change', loadSections);
-        console.log("[initializeForm] Calling loadSections initially.");
+    positionDropdown.addEventListener('change', loadSections);
+        // console.log("[initializeForm] Calling loadSections initially.");
         loadSections(); // 初始化时触发加载板块
     } else {
-        console.warn("[initializeForm] Position dropdown element not found.");
+        // console.warn("[initializeForm] Position dropdown element not found.");
     }
 
     // 绑定开始按钮点击事件
     const startBtn = document.getElementById('startBtn');
     if(startBtn) {
-        startBtn.addEventListener('click', function(e) {
+    startBtn.addEventListener('click', function(e) {
             e.preventDefault();
             startAssessment();
-        });
-        updateStartButton(); // 确保按钮状态正确
+    });
+    updateStartButton(); // 确保按钮状态正确
     } else {
-        console.warn("[initializeForm] Start button not found.");
+        // console.warn("[initializeForm] Start button not found.");
     }
-    console.log("[initializeForm] Finished.");
+    // console.log("[initializeForm] Finished.");
 }
 
 // 加载模块选择卡片 (修改版)
@@ -814,8 +836,8 @@ function startAssessment() {
         if (allSelectedQuestions.length === 0) {
              console.error("[startAssessment] 最终选出的题目列表为空。");
              alert("错误：未能根据您的选择组合出题目列表。");
-            return;
-        }
+        return;
+    }
         currentQuestions = allSelectedQuestions; 
         console.log(`[startAssessment] Final total questions: ${currentQuestions.length}`);
         
@@ -824,7 +846,7 @@ function startAssessment() {
             userAnswers[question.id] = { score: null, comment: '', startTime: null, duration: 0 };
         });
         
-        currentAssessmentData = {
+    currentAssessmentData = {
             objectId: null,
             assessmentId: generateFrontendId(), // 使用前端生成的数字ID
             employeeId: assesseeEmployeeId,
@@ -857,8 +879,8 @@ function startAssessment() {
             positionCode: currentAssessmentData.positionCode,
             positionName: currentAssessmentData.positionName
         });
-        generateQuestionNavigation(); 
-        displayCurrentQuestion(); 
+    generateQuestionNavigation(); 
+    displayCurrentQuestion(); 
         // currentSessionStartTime = new Date(); // startTimer 会设置
         startTimer(new Date(), 0); // 开始新计时，初始用时为0
         console.log("[startAssessment] Assessment interface shown.");
@@ -941,7 +963,7 @@ function displayCurrentQuestion() {
     scoreInputElement.value = currentAnswer.score !== null ? currentAnswer.score : ''; // 设置分数，空字符串表示未评分
     scoreInputElement.max = question.standardScore || 100; // 设置最大分
     commentInputElement.value = currentAnswer.comment || ''; // 设置评语
-
+   
     // **** 修改：为固定的输入框添加/更新事件监听器 (如果需要实时保存) ****
     scoreInputElement.oninput = () => { saveCurrentAnswer(false); saveStateToLocalStorage(); }; // 添加 saveStateToLocalStorage
     commentInputElement.oninput = () => { saveCurrentAnswer(false); saveStateToLocalStorage(); }; // 添加 saveStateToLocalStorage
@@ -980,7 +1002,7 @@ function checkAllAnswered() {
 // 保存当前答案 (恢复完整逻辑)
 function saveCurrentAnswer(isNavigating = false) { 
     console.log(`[saveCurrentAnswer] Called. isNavigating=${isNavigating}, currentQuestionIndex=${currentQuestionIndex}, currentQuestions.length=${currentQuestions?.length}`);
-
+    
     // **** 添加健壮性检查 ****
     if (!currentQuestions || currentQuestions.length === 0) {
         console.error("[saveCurrentAnswer] Error: currentQuestions is empty or not loaded.");
@@ -1015,8 +1037,8 @@ function saveCurrentAnswer(isNavigating = false) {
     if (score !== null) { // Only validate if a score was entered
         if (isNaN(score) || score < 0 || (standardScore !== null && score > standardScore)) {
             if (!isNavigating) { // Only alert if not navigating away
-                 alert(`请输入有效的得分 (0 到 ${standardScore !== null ? standardScore : '最大值'})。`);
-                 scoreInput.focus();
+             alert(`请输入有效的得分 (0 到 ${standardScore !== null ? standardScore : '最大值'})。`);
+             scoreInput.focus();
                  // 对于无效分数，不保存，让用户修正
                  // 或者可以考虑保存为 null?
                  // 当前逻辑：不保存无效分数（除非是导航时输入的null）

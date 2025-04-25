@@ -53,8 +53,39 @@ document.addEventListener('DOMContentLoaded', function() {
     const loginSubmitButton = document.getElementById('loginSubmitButton');
     if (loginSubmitButton) {
         console.log("[main.js] Adding click listener to loginSubmitButton.");
-        loginSubmitButton.addEventListener('click', handleLogin);
+        loginSubmitButton.addEventListener('click', handleLogin); // **** 修改: handleLogin 现在处理登录视图 ****
     }
+
+    // **** 新增: 绑定模态框注册按钮事件 ****
+    const registerSubmitButton = document.getElementById('registerSubmitButton');
+    if (registerSubmitButton) {
+        console.log("[main.js] Adding click listener to registerSubmitButton.");
+        registerSubmitButton.addEventListener('click', handleRegister); // **** 修改: handleRegister 现在处理注册视图 ****
+    }
+
+    // **** 新增: 绑定模态框内切换视图的链接事件 ****
+    const switchToRegisterLink = document.getElementById('switchToRegisterLink');
+    if (switchToRegisterLink) {
+        switchToRegisterLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchToRegisterView();
+        });
+    }
+    const switchToLoginLink = document.getElementById('switchToLoginLink');
+    if (switchToLoginLink) {
+        switchToLoginLink.addEventListener('click', (e) => {
+            e.preventDefault();
+            switchToLoginView();
+        });
+    }
+    // **** 结束新增 ****
+
+    // **** 新增：绑定忘记密码链接事件 ****
+    const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+    if (forgotPasswordLink) {
+        forgotPasswordLink.addEventListener('click', handleForgotPassword);
+    }
+    // **** 结束新增 ****
 
     // 检查用户登录状态
     if (typeof AV !== 'undefined' && AV.User) { // 确保 AV SDK 已加载
@@ -73,6 +104,19 @@ document.addEventListener('DOMContentLoaded', function() {
     // 更新导航栏 UI (确保在 currentUser 可能被设置后调用)
     updateAuthUI();
     // **** 结束新增认证相关初始化 ****
+
+    // **** 新增：为导航栏的登录/注册链接添加事件监听器 ****
+    const navLoginRegisterLink = document.querySelector('.logged-out-item a, .logged-out-item button'); // 尝试查找 a 或 button
+    if (navLoginRegisterLink) {
+        console.log("[main.js] Adding click listener to navbar Login/Register link.");
+        navLoginRegisterLink.addEventListener('click', (event) => {
+            event.preventDefault(); // 阻止默认行为
+            showLoginModal();     // 显示登录模态框
+        });
+    } else {
+        console.warn("[main.js] Could not find the navbar Login/Register link with selector '.logged-out-item a, .logged-out-item button'. Modal won't open from navbar link.");
+    }
+    // **** 结束新增 ****
 
 });
 
@@ -307,231 +351,368 @@ function getStationName(code) {
 
 // 处理登录
 async function handleLogin() {
-    const usernameInput = document.getElementById('loginUsername');
+    console.log("[handleLogin] Login process started.");
+    const emailInput = document.getElementById('loginEmail'); 
     const passwordInput = document.getElementById('loginPassword');
-    const errorAlert = document.getElementById('loginErrorAlert');
+    const errorAlert = document.getElementById('authErrorAlert'); // **** 修改: 使用统一的错误提示框 ****
+
+    // 清除旧错误
+    if (errorAlert) errorAlert.classList.add('d-none');
+
+    if (!emailInput || !passwordInput) {
+        console.error("[handleLogin] Login form elements not found.");
+        showAuthError('登录表单元素未找到！');
+        return;
+    }
+
+    const email = emailInput.value.trim(); 
+    const password = passwordInput.value.trim();
+
+    if (!email || !password) {
+        showAuthError('请输入邮箱和密码！');
+        return;
+    }
+
+    console.log(`[handleLogin] Attempting login for email: ${email}`);
+
+    // 可选: 添加加载状态到按钮
     const loginButton = document.getElementById('loginSubmitButton');
-
-    // 确保元素存在
-    if (!usernameInput || !passwordInput || !errorAlert || !loginButton) {
-        console.error("Login form elements not found!");
-        alert("登录表单似乎不完整，请联系管理员。");
-        return;
-    }
-
-
-    const username = usernameInput.value.trim();
-    const password = passwordInput.value;
-
-    errorAlert.style.display = 'none'; // 隐藏旧错误
-
-    if (!username || !password) {
-        errorAlert.textContent = '请输入用户名和密码。';
-        errorAlert.style.display = 'block';
-        return;
-    }
-
-    loginButton.disabled = true; // 防止重复点击
-    loginButton.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 登录中...';
+    if (loginButton) loginButton.disabled = true;
 
     try {
-        // 确保 AV 和 AV.User 可用
-        if (typeof AV === 'undefined' || !AV.User) {
-            throw new Error("LeanCloud SDK 未正确加载，无法登录。");
+        currentUser = await AV.User.logIn(email, password); 
+        console.log(`[handleLogin] Login successful for user: ${currentUser.getUsername()}`);
+        alert('登录成功！');
+        hideLoginModal();
+        updateAuthUI();
+        if (startAssessmentAfterLogin) {
+            console.log("[handleLogin] Redirecting to assessment page after login.");
+            startAssessmentAfterLogin = false; 
+            window.location.href = 'assessment.html';
         }
-
-        currentUser = await AV.User.logIn(username, password);
-        console.log(`[main.js] Login successful for user: ${currentUser.getUsername()}`);
-
-        hideLoginModal(); // 关闭模态框
-        updateAuthUI(); // 更新导航栏
-
-        // 清空密码输入框
-        passwordInput.value = '';
-
-        // **** 检查是否在 assessment 页面并且需要开始测评 ****
-        // 这个逻辑仍然只对 assessment 页面有意义
-        if (window.location.pathname.endsWith('assessment.html') && startAssessmentAfterLogin) {
-            console.log("[main.js] Proceeding to start assessment after login...");
-            startAssessmentAfterLogin = false; // 重置标记
-            // 确保 startAssessment 函数在 assessment.js 中可用或在此处定义
-            if (typeof startAssessment === 'function') {
-                 startAssessment(); // 重新调用开始测评函数 (需要 assessment.js 定义此函数)
-            } else {
-                console.warn("startAssessment function not found. Cannot start assessment automatically.");
-                 // 登录后默认行为（可能需要跳转到首页或 assessment 页）
-                 window.location.href = 'assessment.html'; // 或者跳转到 index.html
-            }
-        } else {
-             // 如果只是普通登录，更新UI后可能不需要做额外操作
-             console.log("[main.js] Login successful. Auth UI updated.");
-             // 如果当前在 assessment.html 且不需要自动开始，确保显示设置表单
-             if (window.location.pathname.endsWith('assessment.html')) {
-                 const userInfoForm = document.getElementById('userInfoForm');
-                 const assessmentArea = document.getElementById('assessmentArea');
-                 if (userInfoForm) userInfoForm.classList.remove('d-none');
-                 if (assessmentArea) assessmentArea.classList.add('d-none');
-                 // 确保 initializeForm 可用
-                 if (typeof initializeForm === 'function') {
-                     initializeForm();
-                 }
-             }
-        }
-
     } catch (error) {
-        console.error("[main.js] Login failed:", error);
-        errorAlert.textContent = `登录失败: ${error.message || '未知错误'}`;
-        errorAlert.style.display = 'block';
+        console.error("[handleLogin] Login failed:", error);
+        let errorMessage = '登录失败，请稍后重试。';
+        if (error.code === 210 || error.code === 211) {
+            errorMessage = '邮箱或密码错误。';
+        } else if (error.code === 219) {
+            errorMessage = '登录失败次数过多，请稍后再试或重置密码。';
+        }
+        showAuthError(errorMessage); // **** 修改: 使用新的错误显示函数 ****
     } finally {
-        loginButton.disabled = false; // 恢复按钮
-        loginButton.textContent = '登录';
+        if (loginButton) loginButton.disabled = false; // 恢复按钮状态
     }
 }
 
-// 处理登出
-async function handleLogout() {
-     // showLoading 可能在特定页面才有，需要检查
-     if (typeof showLoading === 'function') {
-         showLoading("正在登出...");
-     } else {
-         console.log("Logging out...");
-     }
-     try {
-         // 确保 AV 和 AV.User 可用
-         if (typeof AV === 'undefined' || !AV.User) {
-             throw new Error("LeanCloud SDK 未正确加载，无法登出。");
-         }
-         await AV.User.logOut();
-         currentUser = null;
-         startAssessmentAfterLogin = false; // 重置标记
-         console.log("[main.js] Logout successful.");
-         updateAuthUI(); // 更新导航栏
+// **** 修改：处理注册 ****
+async function handleRegister() {
+    console.log("[handleRegister] Registration process started.");
+    const emailInput = document.getElementById('loginEmail'); // **** 修改: 复用邮箱输入框 ****
+    const passwordInput = document.getElementById('loginPassword'); // **** 修改: 复用密码输入框 ****
+    const confirmPasswordInput = document.getElementById('registerConfirmPassword');
+    const errorAlert = document.getElementById('authErrorAlert'); // **** 修改: 使用统一的错误提示框 ****
 
-         // 登出后的页面跳转或UI更新逻辑
-         // 简单的做法是跳转回首页
-         alert("您已成功登出。");
-         window.location.href = 'index.html'; // 或者 assessment.html
+    // 清除旧错误
+    if (errorAlert) errorAlert.classList.add('d-none');
 
-         /*
-         // 如果想留在当前页面并更新UI (更复杂，需要确保各页面元素存在)
-         // 例如，在 assessment.html 上：
-         if (window.location.pathname.endsWith('assessment.html')) {
-             document.getElementById('userInfoForm')?.classList.remove('d-none');
-             document.getElementById('assessmentArea')?.classList.add('d-none');
-             if (typeof initializeForm === 'function') initializeForm();
-             if (typeof stopTimer === 'function') stopTimer(); // 停止计时器
-             // 清理测评状态变量 (需要确保这些变量在 assessment.js 中定义)
-             // currentAssessmentData = null; currentQuestions = []; userAnswers = {}; currentQuestionIndex = 0;
-         }
-         // 其他页面可能需要不同的处理
-
-         if (typeof hideLoading === 'function') {
-             hideLoading();
-         }
-         */
-
-     } catch (error) {
-          if (typeof hideLoading === 'function') {
-             hideLoading();
-         }
-         console.error("[main.js] Logout failed:", error);
-         alert("登出失败: " + error.message);
-     }
-}
-
-// 更新导航栏认证相关UI
-function updateAuthUI() {
-    console.log("[main.js] Attempting to update Auth UI (v2 - Circle Icon Style)...");
-    const authLink = document.getElementById('authLink');
-    const authIcon = document.getElementById('authIcon');
-    const authLabel = document.getElementById('authLabel');
-
-    // 如果页面上没有这些新元素，就直接返回
-    if (!authLink || !authIcon || !authLabel) {
-        // console.log("[main.js] Auth link/icon/label elements not found on this page. Skipping UI update.");
+    if (!emailInput || !passwordInput || !confirmPasswordInput) {
+        console.error("[handleRegister] Registration form elements not found.");
+        showAuthError('注册表单元素未找到！');
         return;
     }
-    console.log("[main.js] Found auth link, icon, and label elements.");
 
-    // 再次检查 currentUser 状态
-    if (!currentUser && typeof AV !== 'undefined' && AV.User) {
-        currentUser = AV.User.current();
+    const email = emailInput.value.trim();
+    const password = passwordInput.value.trim();
+    const confirmPassword = confirmPasswordInput.value.trim();
+
+    if (!email || !password || !confirmPassword) {
+        showAuthError('请输入邮箱、密码和确认密码！');
+        return;
     }
 
-    // 移除旧的事件监听器，防止重复绑定
-    authLink.removeEventListener('click', showLoginModal);
-    authLink.removeEventListener('click', handleLogoutWrapper); // 使用包装函数
-    authLink.onclick = null; // 清除可能存在的旧 onclick
+    if (password !== confirmPassword) {
+        showAuthError('两次输入的密码不一致！');
+        return;
+    }
 
-    if (currentUser) {
-        const userName = currentUser.get('name') || currentUser.getUsername();
-        console.log(`[main.js] Updating UI for logged in user: ${userName}`);
-        // 已登录
-        authLabel.textContent = userName;
-        authIcon.className = 'bi bi-person-check-fill'; // 更新图标为 'check' 状态
-        authLink.title = `已登录: ${userName} (点击登出)`;
-        // 绑定登出事件到链接
-        authLink.addEventListener('click', handleLogoutWrapper);
-    } else {
-        console.log("[main.js] Updating UI for logged out user.");
-        // 未登录
-        authLabel.textContent = '登录';
-        authIcon.className = 'bi bi-person-circle'; // 默认用户图标
-        authLink.title = '点击登录';
-        // 绑定显示登录模态框事件到链接
-        authLink.addEventListener('click', showLoginModalWrapper);
+    if (password.length < 6) {
+       showAuthError('密码长度不能少于 6 位！');
+       return;
+    }
+
+    console.log(`[handleRegister] Attempting registration for email: ${email}`);
+
+    // 可选: 添加加载状态到按钮
+    const registerButton = document.getElementById('registerSubmitButton');
+    if (registerButton) registerButton.disabled = true;
+
+    const user = new AV.User();
+    user.setUsername(email);
+    user.setPassword(password);
+    user.setEmail(email);
+
+    try {
+        const loggedInUser = await user.signUp();
+        console.log('[handleRegister] Registration successful:', loggedInUser);
+        currentUser = loggedInUser; 
+        alert('注册成功！您已自动登录。');
+        hideLoginModal(); 
+        updateAuthUI();
+        
+        AV.User.requestEmailVerify(email).then(() => {
+            console.log('[handleRegister] Verification email sent.');
+        }).catch(error => {
+            console.error('[handleRegister] Failed to send verification email:', error);
+        });
+
+    } catch (error) {
+        console.error('[handleRegister] Registration failed:', error);
+        let errorMessage = '注册失败，请稍后重试。';
+        if (error.code === 202 || error.code === 203) {
+            errorMessage = '该邮箱已被注册。';
+        } else if (error.code === 125) {
+            errorMessage = '请输入有效的邮箱地址。';
+        }
+        showAuthError(errorMessage); // **** 修改: 使用新的错误显示函数 ****
+    } finally {
+         if (registerButton) registerButton.disabled = false; // 恢复按钮状态
     }
 }
 
-// **** 新增：包装函数以处理事件对象 ****
+// **** 结束修改注册处理 ****
+
+async function handleLogout() {
+    console.log("[handleLogout] Logout process started.");
+    try {
+        await AV.User.logOut();
+        currentUser = null; 
+        console.log("[handleLogout] Logout successful.");
+        alert('您已成功退出登录。');
+        updateAuthUI(); 
+        // Optionally reload or redirect
+        // window.location.reload(); 
+    } catch (error) {
+        console.error("[handleLogout] Logout failed:", error);
+        alert('退出登录失败，请稍后重试。');
+    }
+}
+
+// **** 修改：更新认证 UI (导航栏按钮) ****
+function updateAuthUI() {
+    console.log("[updateAuthUI] Updating authentication UI elements...");
+    const loggedInItems = document.querySelectorAll('.logged-in-item');
+    const loggedOutItems = document.querySelectorAll('.logged-out-item');
+    const requiresLoginLinks = document.querySelectorAll('.requires-login');
+    const loggedInUserLabel = document.getElementById('loggedInUserLabel'); // **** 新增：获取用户标签元素 ****
+
+    currentUser = AV.User.current(); // 确保获取最新的用户状态
+    console.log("[updateAuthUI] Current User:", currentUser ? currentUser.getUsername() : "None");
+
+    if (currentUser) {
+        console.log(`[updateAuthUI] Updating UI for logged in user: ${currentUser.getUsername()}`);
+        loggedInItems.forEach(item => item.style.display = 'inline-block'); // Or 'flex' or appropriate display value
+        loggedOutItems.forEach(item => item.style.display = 'none');
+
+        // 移除需要登录链接的禁用样式 (如果应用了的话)
+        requiresLoginLinks.forEach(link => {
+            link.classList.remove('disabled');
+            link.removeAttribute('aria-disabled');
+            link.style.pointerEvents = 'auto';
+            link.style.opacity = '1';
+            // 移除可能的事件监听器阻止
+            link.onclick = null; // 简单移除，或恢复原始 onclick
+        });
+        
+        // **** 新增：更新导航栏标签为用户名 ****
+        if (loggedInUserLabel) {
+            const userName = currentUser.get('name') || currentUser.getEmail() || currentUser.getUsername() || '用户';
+            loggedInUserLabel.textContent = userName;
+            console.log(`[updateAuthUI] Set loggedInUserLabel text to: ${userName}`);
+        } else {
+            console.warn("[updateAuthUI] Element with ID 'loggedInUserLabel' not found for updating username.");
+        }
+        // **** 结束新增 ****
+
+    } else {
+        console.log("[updateAuthUI] Updating UI for logged out user.");
+        loggedInItems.forEach(item => item.style.display = 'none');
+        loggedOutItems.forEach(item => item.style.display = 'inline-block'); // Or 'flex'
+
+        // 禁用需要登录的链接
+        requiresLoginLinks.forEach(link => {
+            link.classList.add('disabled');
+            link.setAttribute('aria-disabled', 'true');
+            link.style.pointerEvents = 'none';
+            link.style.opacity = '0.65';
+            // 添加点击事件以显示登录提示
+            link.onclick = (e) => {
+                e.preventDefault();
+                // alert('请先登录后再访问此页面。'); // 可以用 alert
+                showLoginModal(); // 或者直接显示登录模态框
+            };
+        });
+        // **** 新增：如果用户登出，恢复标签为"个人中心" ****
+        if (loggedInUserLabel) {
+            loggedInUserLabel.textContent = '个人中心'; 
+        }
+        // **** 结束新增 ****
+    }
+    console.log("[updateAuthUI] UI update finished.");
+}
+// **** 结束修改 ****
+
+// Wrapper functions (保留，因为 handleLogoutWrapper 和 showLoginModalWrapper 仍在使用)
+function handleLoginWrapper(event) {
+    if (event) event.preventDefault(); 
+    handleLogin();
+}
+
+function handleRegisterWrapper(event) { // 虽然注册按钮在模态框内，但保留以防万一
+    if (event) event.preventDefault(); 
+    handleRegister();
+}
+
 function handleLogoutWrapper(event) {
-    event.preventDefault(); // 阻止链接默认行为
+    if (event) event.preventDefault();
     handleLogout();
 }
 
 function showLoginModalWrapper(event) {
-    event.preventDefault(); // 阻止链接默认行为
-    showLoginModal();
+    if (event) event.preventDefault();
+    showLoginModal(); // 调用显示模态框的函数
 }
 
-// 显示登录模态框
-function showLoginModal() {
-    console.log("[main.js] showLoginModal called.");
-    // 清理可能存在的旧错误信息
-    const errorAlert = document.getElementById('loginErrorAlert');
-    if(errorAlert) errorAlert.style.display = 'none';
+// **** REMOVE: 显示/隐藏注册模态框的函数 ****
+// let registerModalInstance = null; 
+// function showRegisterModalWrapper(event) { ... }
+// function showRegisterModal() { ... }
+// function hideRegisterModal() { ... }
+// **** END REMOVE ****
 
+// **** 新增: 控制登录/注册视图切换 ****
+function switchToRegisterView() {
+    console.log("Switching to register view in modal.");
+    const modal = document.getElementById('loginModal');
+    if (!modal) return;
+
+    modal.querySelector('#loginModalLabel').textContent = '注册新用户';
+    modal.querySelectorAll('.registration-field').forEach(el => el.classList.remove('d-none'));
+    modal.querySelector('#loginSubmitButton').classList.add('d-none');
+    modal.querySelector('#registerSubmitButton').classList.remove('d-none');
+    modal.querySelector('#switchToRegisterLink').classList.add('d-none');
+    modal.querySelector('#switchToLoginLink').classList.remove('d-none');
+    // 清除可能存在的错误提示
+    const errorAlert = modal.querySelector('#authErrorAlert');
+    if(errorAlert) errorAlert.classList.add('d-none');
+}
+
+function switchToLoginView() {
+    console.log("Switching to login view in modal.");
+    const modal = document.getElementById('loginModal');
+    if (!modal) return;
+
+    modal.querySelector('#loginModalLabel').textContent = '请登录';
+    modal.querySelectorAll('.registration-field').forEach(el => el.classList.add('d-none'));
+    modal.querySelector('#loginSubmitButton').classList.remove('d-none');
+    modal.querySelector('#registerSubmitButton').classList.add('d-none');
+    modal.querySelector('#switchToRegisterLink').classList.remove('d-none');
+    modal.querySelector('#switchToLoginLink').classList.add('d-none');
+    // 清除可能存在的错误提示
+    const errorAlert = modal.querySelector('#authErrorAlert');
+    if(errorAlert) errorAlert.classList.add('d-none');
+}
+
+// **** 新增: 显示认证错误信息 ****
+function showAuthError(message) {
+    const errorAlert = document.getElementById('authErrorAlert');
+    if (errorAlert) {
+        errorAlert.textContent = message;
+        errorAlert.classList.remove('d-none');
+    }
+}
+// **** 结束新增 ****
+
+// Utility function to show the login modal (修改: 确保切换回登录视图)
+function showLoginModal() {
+    console.log("[showLoginModal] Attempting to show login modal.");
+    // **** 新增: 每次打开时，确保是登录视图 ****
+    switchToLoginView(); 
+
+    const loginModalElement = document.getElementById('loginModal');
+    if (!loginModalElement) {
+        console.error("Login modal element (#loginModal) not found.");
+        alert('无法找到登录窗口元素！');
+        return;
+    }
+    if (!loginModalInstance && typeof bootstrap !== 'undefined') {
+        console.log("[showLoginModal] Creating new bootstrap modal instance.");
+        loginModalInstance = new bootstrap.Modal(loginModalElement);
+    }
     if (loginModalInstance) {
-         console.log("[main.js] Showing login modal using Bootstrap instance.");
+        console.log("[showLoginModal] Showing modal via bootstrap instance.");
         loginModalInstance.show();
-    } else {
-         console.warn("[main.js] Login modal instance not available. Attempting fallback show.");
-         // Fallback for non-Bootstrap or if instance failed to initialize
-         const modalElement = document.getElementById('loginModal');
-         if(modalElement) {
-             modalElement.style.display = 'block'; // 或者添加 'show' class
-             modalElement.classList.add('show'); // Bootstrap 5 uses 'show' class
-         } else {
-             console.error("[main.js] Login modal element ('loginModal') not found. Cannot show modal.");
-             alert("无法打开登录框。请刷新页面或联系管理员。");
-         }
+    } else if (loginModalElement) {
+        console.warn("Bootstrap modal instance not available, using basic show.");
+        loginModalElement.style.display = 'block'; // 或 'flex'
     }
 }
 
-// 隐藏登录模态框
+// Utility function to hide the login modal (无变化)
 function hideLoginModal() {
-     console.log("[main.js] hideLoginModal called.");
-     if (loginModalInstance) {
+    console.log("[hideLoginModal] Attempting to hide login modal.");
+    if (loginModalInstance) {
+        console.log("[hideLoginModal] Hiding modal via bootstrap instance.");
         loginModalInstance.hide();
     } else {
-         console.warn("[main.js] Login modal instance not available. Attempting fallback hide.");
-         const modalElement = document.getElementById('loginModal');
-         if(modalElement) {
-             modalElement.style.display = 'none';
-             modalElement.classList.remove('show');
-         }
+        const loginModalElement = document.getElementById('loginModal');
+        if (loginModalElement) {
+            loginModalElement.style.display = 'none';
+        } else {
+             console.warn("Could not find loginModal element to hide.");
+        }
     }
 }
 
+// **** 新增：绑定忘记密码链接事件 ****
+async function handleForgotPassword(event) {
+    if (event) event.preventDefault();
+    console.log("[handleForgotPassword] Password reset process started.");
+    const emailInput = document.getElementById('loginEmail');
+    const errorAlert = document.getElementById('authErrorAlert');
 
-// **** 结束新增认证函数 **** 
+    // 清除旧错误
+    if (errorAlert) errorAlert.classList.add('d-none');
+
+    if (!emailInput) {
+        console.error("[handleForgotPassword] Email input element not found.");
+        showAuthError('请输入邮箱地址！');
+        return;
+    }
+
+    const email = emailInput.value.trim();
+
+    if (!email) {
+        showAuthError('请输入邮箱地址！');
+        return;
+    }
+
+    console.log(`[handleForgotPassword] Attempting password reset for email: ${email}`);
+
+    try {
+        await AV.User.requestPasswordReset(email);
+        console.log("[handleForgotPassword] Password reset request successful.");
+        alert('密码重置链接已发送至您的邮箱。请检查您的邮箱并按照说明重置密码。');
+        hideLoginModal();
+    } catch (error) {
+        console.error("请求密码重置失败:", error);
+        // 根据 LeanCloud 的错误码提供更具体的提示
+        if (error.code === 205) { // User not found
+            showAuthError('该邮箱地址未注册。');
+        } else {
+            showAuthError(`请求密码重置失败: ${error.message}`);
+        }
+    }
+}
+// **** 结束新增 ****
+
+// ... (确保文件末尾没有遗漏其他代码) ... 
