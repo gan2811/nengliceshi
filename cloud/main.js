@@ -263,6 +263,40 @@ AV.Cloud.define('submitAssessmentCloud', async (request) => {
         assessment.unset('elapsedSeconds');
         assessment.unset('currentQuestionIndex');
 
+        // **** 新增：为 Assessment 设置 ACL ****
+        console.log('[submitAssessmentCloud] Setting ACL for Assessment...'); // 添加日志方便调试
+        const assessmentAcl = new AV.ACL();
+        const adminRole = new AV.Role('Admin'); // 获取 Admin 角色
+
+        assessmentAcl.setPublicReadAccess(false);
+        assessmentAcl.setPublicWriteAccess(false);
+
+        // 授予 Admin 角色读写权限
+        assessmentAcl.setRoleReadAccess(adminRole, true);
+        assessmentAcl.setRoleWriteAccess(adminRole, true);
+
+        // 授予被测评用户读取权限
+        if (assesseeUserProfile) { // 使用前面获取的 assesseeUserProfile
+            assessmentAcl.setReadAccess(assesseeUserProfile, true);
+            // 如果被测评用户也需要写权限（例如暂停/恢复），取消下面一行的注释
+            // assessmentAcl.setWriteAccess(assesseeUserProfile, true);
+        } else {
+            console.warn('[submitAssessmentCloud] Assessment is missing userPointer (assesseeUserProfile), cannot grant read access to the tested user.');
+        }
+
+        // 可选：授予测评师（调用者）读写权限
+        if (user) { // 使用函数开头的 user 变量
+            assessmentAcl.setReadAccess(user, true);
+            assessmentAcl.setWriteAccess(user, true);
+            console.log(`[submitAssessmentCloud] Granting Read/Write access to caller: ${user.id}`);
+        } else {
+            console.warn('[submitAssessmentCloud] request.currentUser (user) is not available, cannot grant access to caller.');
+        }
+
+        assessment.setACL(assessmentAcl); // 应用 ACL
+        console.log('[submitAssessmentCloud] ACL set for Assessment object.');
+        // **** 结束 ACL 设置 ****
+
         const savedAssessment = await assessment.save(null, { useMasterKey: true });
         console.log(`[submitAssessmentCloud] Assessment saved/updated: ${savedAssessment.id}`);
 
@@ -309,7 +343,34 @@ AV.Cloud.define('submitAssessmentCloud', async (request) => {
              detailObject.set('durationSeconds', Number(answer?.duration ?? 0));
              // **** 保存 startTime ****
              detailObject.set('startTime', answer && answer.startTime ? new Date(answer.startTime) : null);
-                detailObjectsToSave.push(detailObject);
+
+            // **** 新增：为 AssessmentDetail 设置 ACL (通常与 Assessment 一致) ****
+            console.log(`[submitAssessmentCloud] Setting ACL for Detail (QID: ${questionIdNum})...`); // 添加日志
+            const detailAcl = new AV.ACL();
+            // adminRole 已经定义过，可以直接使用
+
+            detailAcl.setPublicReadAccess(false);
+            detailAcl.setPublicWriteAccess(false);
+
+            // 授予 Admin 角色读写权限
+            detailAcl.setRoleReadAccess(adminRole, true);
+            detailAcl.setRoleWriteAccess(adminRole, true);
+
+            // 授予被测评用户读取权限
+            if (assesseeUserProfile) { // 使用 assesseeUserProfile
+                detailAcl.setReadAccess(assesseeUserProfile, true);
+            }
+
+            // 可选：授予测评师（调用者）读写权限
+            if (user) { // 使用 user 变量
+                detailAcl.setReadAccess(user, true);
+                detailAcl.setWriteAccess(user, true);
+            }
+
+            detailObject.setACL(detailAcl); // 应用 ACL
+            // **** 结束 ACL 设置 ****
+
+            detailObjectsToSave.push(detailObject);
         }
         if (detailObjectsToSave.length > 0) {
             console.log(`[submitAssessmentCloud] Step 4: Saving/Updating ${detailObjectsToSave.length} AssessmentDetail objects...`);

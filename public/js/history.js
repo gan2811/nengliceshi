@@ -1523,6 +1523,9 @@ async function processAndUploadRecords(records) {
     let errorCount = 0;
     const errors = [];
 
+    // **** 新增：定义管理员角色（请确保在 LeanCloud 控制台创建了名为 'Admin' 的角色）****
+    const adminRole = new AV.Role('Admin'); 
+
     for (let i = 0; i < totalRecords; i++) {
         const record = records[i];
         const progressMessage = `正在上传第 ${i + 1} / ${totalRecords} 条记录 (${record.userInfo?.name || '未知用户'})...`;
@@ -1617,6 +1620,24 @@ async function processAndUploadRecords(records) {
             }
             assessment.set('source', 'json_import'); // 标记来源
 
+            // **** 新增：为 Assessment 设置 ACL ****
+            const assessmentAcl = new AV.ACL();
+            assessmentAcl.setPublicReadAccess(false);
+            assessmentAcl.setPublicWriteAccess(false);
+            // 授予管理员读写权限
+            assessmentAcl.setRoleReadAccess(adminRole, true);
+            assessmentAcl.setRoleWriteAccess(adminRole, true);
+            // 授予被测评用户读取权限
+            if (userPointer) {
+                assessmentAcl.setReadAccess(userPointer, true); 
+                // 注意：这里没有给被测评用户写权限，如果他们需要（如暂停/继续），需要添加
+                 // assessmentAcl.setWriteAccess(userPointer, true);
+            } else {
+                 console.warn(`[processAndUploadRecords] Assessment for record ${i+1} is missing userPointer, cannot grant read access to the tested user.`);
+            }
+            assessment.setACL(assessmentAcl); // 应用 ACL
+            // **** 结束 ACL 设置 ****
+
             // 保存 Assessment
             const savedAssessment = await assessment.save();
             console.log(`  Saved Assessment ${savedAssessment.id}`);
@@ -1676,6 +1697,21 @@ async function processAndUploadRecords(records) {
                         detail.set('durationSeconds', answerData.duration);
                         // detail.set('startTime', answerData.startTime ? new Date(answerData.startTime) : null); // Start time per question often not needed
                         detail.set('questionOrder', index); // 保存题目顺序
+
+                        // **** 新增：为 AssessmentDetail 设置 ACL (通常与 Assessment 一致) ****
+                        const detailAcl = new AV.ACL();
+                        detailAcl.setPublicReadAccess(false);
+                        detailAcl.setPublicWriteAccess(false);
+                        // 授予管理员读写权限
+                        detailAcl.setRoleReadAccess(adminRole, true);
+                        detailAcl.setRoleWriteAccess(adminRole, true);
+                        // 授予被测评用户读取权限
+                        if (userPointer) {
+                            detailAcl.setReadAccess(userPointer, true);
+                        } // (无需警告，已在 Assessment 处警告过)
+                        detail.setACL(detailAcl); // 应用 ACL
+                        // **** 结束 ACL 设置 ****
+
                         detailsToSave.push(detail);
                     }
                 });
