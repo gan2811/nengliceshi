@@ -857,8 +857,13 @@ function startAssessment() {
             stationName: stationName,
             startTime: new Date().toISOString(), // 使用 ISO 格式字符串
             status: '进行中', // 明确状态
-            questions: currentQuestions.map(q => ({ 
-                id: q.id, standardScore: q.standardScore, content: q.content, section: q.section, type: q.type
+            questions: currentQuestions.map(q => ({
+                id: q.id,
+                standardScore: q.standardScore,
+                content: q.content,
+                section: q.section,
+                type: q.type,
+                knowledgeSource: q.knowledgeSource
             })),
             answers: userAnswers,
             totalScore: null, 
