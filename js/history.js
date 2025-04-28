@@ -1925,42 +1925,77 @@ async function exportDetail() {
         const details = await detailQuery.find();
         
         // Reconstruct the record object needed by analysis functions
+        const userPointer = assessment.get('userPointer'); // Get the actual UserProfile object
+        const positionPointer = userPointer?.get('positionPointer'); // Get position pointer
+        const stationPointer = userPointer?.get('stationPointer'); // Get station pointer
+
+        // Function to safely convert to number or return 0 if invalid/null/undefined
+        const safeGetNumber = (obj, key, defaultValue = 0) => {
+            const value = obj.get(key);
+            if (value === null || value === undefined) return defaultValue;
+            const num = Number(value);
+            return isNaN(num) ? defaultValue : num;
+        };
+        
+         // Function to safely get scoreRate, return 0 if invalid/null/undefined
+         const safeGetScoreRate = (obj) => {
+            const rate = obj.get('scoreRate');
+            if (rate === null || rate === undefined) return 0;
+            const num = Number(rate);
+            return isNaN(num) ? 0 : num;
+         };
+
         currentRecordData = {
             id: assessment.id,
-            userInfo: assessment.get('userPointer')?.attributes, // Get attributes
-            position: assessment.get('userPointer')?.get('positionPointer')?.get('positionName'), // Adjust based on actual structure
+            // **** 修改：直接传递 UserProfile 对象 ****
+            userInfo: userPointer ? userPointer.toJSON() : {}, // Pass JSON representation might be safer if full object isn't needed, or pass userPointer directly if functions expect AV.Object
+            // **** 修改：使用更可靠的方式获取岗位名称 ****
+            position: positionPointer ? positionPointer.get('positionName') : (userPointer ? userPointer.get('position') : '未知'), // Fallback added
             assessor: assessment.get('assessorName'),
             timestamp: assessment.get('endTime')?.toISOString(),
             startTime: assessment.get('startTime')?.toISOString(),
             duration: assessment.get('durationMinutes'),
             score: {
-                totalScore: assessment.get('totalScore'),
-                maxScore: assessment.get('maxPossibleScore'),
-                scoreRate: assessment.get('scoreRate'),
+                // **** 修改：确保分数是数字 ****
+                totalScore: safeGetNumber(assessment, 'totalScore', 0),
+                maxScore: safeGetNumber(assessment, 'maxPossibleScore', 0),
+                scoreRate: safeGetScoreRate(assessment), // Use the specific function for rate
             },
-            questions: details.map(d => ({ // Ensure all needed fields are here
-                 id: d.get('questionId'),
+            questions: details.map(d => ({ 
+                 id: d.get('questionId'), // Keep as is, functions seem to handle string/number ok
                  content: d.get('questionContent'),
-                 standardScore: d.get('standardScore'),
-                 standardAnswer: d.get('standardAnswer'), // Might need parsing if object
+                 // **** 修改：确保 standardScore 是数字 ****
+                 standardScore: safeGetNumber(d, 'standardScore', 0), 
+                 standardAnswer: d.get('standardAnswer'), // Keep as is for now
                  section: d.get('section'),
                  type: d.get('type'),
                  knowledgeSource: d.get('knowledgeSource')
             })),
             answers: details.reduce((acc, d) => {
                 const qId = d.get('questionId');
+                // **** 修改：确保 answer score 是数字或 null ****
+                let answerScore = d.get('score');
+                if (answerScore !== null && answerScore !== undefined) {
+                     answerScore = Number(answerScore);
+                     if (isNaN(answerScore)) {
+                         answerScore = null; // Treat invalid numbers as null (or '未作答'?)
+                     }
+                 } // else keep null/undefined as is
+
                 acc[qId] = {
-                    score: d.get('score'),
+                    score: answerScore, 
                     comment: d.get('comment'),
                     duration: d.get('durationSeconds'),
                 };
                 return acc;
             }, {}),
             status: assessment.get('status'),
-            totalActiveSeconds: assessment.get('totalActiveSeconds'),
-            // ... add any other fields needed by analysis functions ...
+             // **** 修改：确保 activeSeconds 是数字 ****
+             totalActiveSeconds: safeGetNumber(assessment, 'totalActiveSeconds', null), // Default to null if not present/valid
         };
-        // console.log("Data for analysis:", currentRecordData);
+         console.log("[exportDetail] Reconstructed currentRecordData for analysis:", JSON.stringify(currentRecordData, null, 2)); // Added detailed log
+
+        // console.log("Data for analysis:", currentRecordData); // Original log line
 
         if (!currentRecordData) {
             throw new Error("无法获取生成分析报告所需的数据。");
@@ -2140,191 +2175,279 @@ async function viewDetail(assessmentId) {
 // **** START: Functions copied/adapted from analysis.js for PDF export ****
 // **** ------------------------------------------ ****
 
-// Calculates performance per section for a single assessment record
+// **** CORRECT IMPLEMENTATION FROM analysis.js ****
 function calculateIndividualSectionPerformance(record) {
+    // 返回格式: { performance: { sectionName: { score: number, max: number } }, totalAchieved: number, totalStandard: number }
+    const sectionPerformance = {}; 
+    let totalAchievedScore = 0;
+    let totalStandardScore = 0;
+
     if (!record || !record.questions || !record.answers) {
-        console.warn("[calculateIndividualSectionPerformance] Invalid record data provided.");
-        return { sections: {}, totalAchieved: 0, totalPossible: 0 };
+        console.warn("[calculateIndividualSectionPerformance - history.js] Invalid record data.", record);
+        return { performance: {}, totalAchieved: 0, totalStandard: 0 }; 
     }
 
-    const sections = {};
-    let totalAchieved = 0;
-    let totalPossible = 0;
-
-    record.questions.forEach(question => {
-        const section = question.section || '未分类'; // Default section if missing
-        const answer = record.answers[question.id];
-        const score = answer ? (answer.score ?? 0) : 0;
-        const standardScore = question.standardScore ?? 0;
-
-        if (!sections[section]) {
-            sections[section] = { achieved: 0, possible: 0, count: 0 };
+    record.questions.forEach(q => {
+        if (!q || !q.id || !record.answers.hasOwnProperty(q.id)) {
+            console.warn(`[calculateIndividualSectionPerformance - history.js] Skipping invalid/unanswered question:`, q?.id);
+            return; 
         }
 
-        sections[section].achieved += score;
-        sections[section].possible += standardScore;
-        sections[section].count++;
-        totalAchieved += score;
-        totalPossible += standardScore;
-    });
-
-    // Calculate mastery rate for each section
-    for (const sectionName in sections) {
-        const sectionData = sections[sectionName];
-        sectionData.masteryRate = sectionData.possible > 0
-            ? parseFloat(((sectionData.achieved / sectionData.possible) * 100).toFixed(1))
-            : 0;
-    }
-    
-    // Sort sections alphabetically for consistent display
-    const sortedSections = Object.entries(sections)
-                             .sort(([,a], [,b]) => a.sectionName?.localeCompare(b.sectionName || ''))
-                             .reduce((obj, [key, value]) => {
-                                 obj[key] = value;
-                                 return obj;
-                             }, {});
-
-
-    return {
-        sections: sortedSections, // Use sorted sections
-        totalAchieved: totalAchieved,
-        totalPossible: totalPossible,
-        overallMasteryRate: totalPossible > 0 
-            ? parseFloat(((totalAchieved / totalPossible) * 100).toFixed(1))
-            : 0
-    };
-}
-
-// Calculates best/worst questions for a single record
-function calculateIndividualQuestionPerformance(record) {
-    if (!record || !record.questions || !record.answers) {
-        console.warn("[calculateIndividualQuestionPerformance] Invalid record data provided.");
-        return { best: [], worst: [], other: [] };
-    }
-
-    const questions = record.questions.map(q => {
+        const section = q.section || '未分类';
         const answer = record.answers[q.id];
-        const score = answer ? (answer.score ?? null) : null;
-        const standardScore = q.standardScore ?? 0;
-        const scoreRate = (standardScore > 0 && score !== null) 
-                          ? parseFloat(((score / standardScore) * 100).toFixed(1)) 
-                          : (score === null ? null : 0); // Rate is null if not scored
-        return {
-            id: q.id,
-            content: q.content,
-            score: score,
-            standardScore: standardScore,
-            scoreRate: scoreRate,
-            section: q.section || '未分类',
-            comment: answer?.comment || ''
-        };
-    }).filter(q => q.score !== null); // Only consider scored questions
+        const standardScore = (q.standardScore !== undefined && q.standardScore !== null) ? Number(q.standardScore) : 0;
+        const currentScore = (answer && answer.score !== undefined && answer.score !== null && !isNaN(answer.score)) ? Number(answer.score) : 0;
 
-    const calculateRate = (q) => {
-         if (q.score === null || q.score === undefined) return -1; // Treat unscored as lowest
-         return q.standardScore > 0 ? (q.score / q.standardScore) : 0;
-    };
-    
-    questions.sort((a, b) => calculateRate(b) - calculateRate(a)); // Sort descending by rate
-
-    const threshold = 60; // **** 修改：阈值改为 60 **** // Example threshold for "well mastered"
-    const best = questions.filter(q => q.scoreRate !== null && q.scoreRate >= threshold);
-    const worst = questions.filter(q => q.scoreRate !== null && q.scoreRate < threshold);
-
-    return {
-        best: best,
-        worst: worst,
-        other: [] // We are not using 'other' category here
-    };
-}
-
-// Generates training suggestions based on a single record
-function generateIndividualTrainingSuggestions(record) {
-     if (!record || !record.questions || !record.answers) {
-        console.warn("[generateIndividualTrainingSuggestions] Invalid record data provided.");
-        return { sectionSuggestions: [], questionSuggestions: [], overallSuggestion: '' };
-    }
-
-    const performance = calculateIndividualSectionPerformance(record);
-    const questionPerformance = calculateIndividualQuestionPerformance(record);
-    const lowScoreThresholdRate = 60; // Score rate below 60% is considered weak
-    const suggestions = {
-        sectionSuggestions: [], // Suggestions based on weak sections
-        questionSuggestions: [], // Suggestions based on specific weak questions
-        overallSuggestion: '' // Overall assessment comment
-    };
-
-    // 1. Section-based Suggestions
-    const weakSections = Object.entries(performance.sections)
-                               .filter(([_, data]) => data.masteryRate < lowScoreThresholdRate)
-                               .sort(([,a], [,b]) => a.masteryRate - b.masteryRate); // Sort weakest first
-
-    weakSections.forEach(([sectionName, data]) => {
-        suggestions.sectionSuggestions.push(
-            `<strong>重点关注板块：</strong> ${sectionName} (${data.masteryRate.toFixed(1)}%)，掌握程度严重不足，建议安排<strong class="text-danger">系统性培训和专项辅导</strong>。`
-        );
+        if (!sectionPerformance[section]) {
+            sectionPerformance[section] = { score: 0, max: 0 };
+        }
+        
+        if (standardScore > 0) { 
+            sectionPerformance[section].score += currentScore;
+            sectionPerformance[section].max += standardScore;
+            totalAchievedScore += currentScore;
+            totalStandardScore += standardScore;
+        }
     });
-
-    // 2. Question-based Suggestions (focus on worst performing)
-    const weakQuestions = questionPerformance.worst
-                                .filter(q => q.scoreRate !== null && q.scoreRate < lowScoreThresholdRate)
-                                .sort((a, b) => a.scoreRate - b.scoreRate); // Sort worst first
-
-    if (weakQuestions.length > 0) {
-         let questionListHtml = '<ul class="list-unstyled mb-0">';
-         weakQuestions.slice(0, 5).forEach(q => { // Limit to top 5 worst
-             questionListHtml += `<li>${q.content} <span class="badge bg-danger">${q.score}/${q.standardScore}</span></li>`;
-         });
-         questionListHtml += '</ul>';
-         suggestions.questionSuggestions.push(
-             `<strong>掌握薄弱题目：</strong> 以下题目得分低于 60% 或未作答，请重点关注：${questionListHtml} 建议<strong class="text-danger">查找相关资料重点复习</strong>。`
-         );
-    }
-
-    // 3. Overall Suggestion
-    const overallRate = performance.overallMasteryRate;
-    if (overallRate < 60) {
-        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) <strong class="text-danger">偏低</strong>，基础知识和核心技能掌握不足。`;
-    } else if (overallRate < 85) {
-        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) 良好，但仍有提升空间，部分知识点掌握不够牢固。`;
-    } else {
-        suggestions.overallSuggestion = `<strong>总体评价：</strong> 本次测评成绩 (${overallRate.toFixed(1)}%) 优秀，基础知识和核心技能掌握较好。`;
-    }
     
-    // 4. General Learning Suggestion
-    suggestions.learningSuggestion = `<strong>学习建议：</strong> 必须<strong class="text-danger">必须系统复习</strong>，对照教材/手册，逐一攻克薄弱点，多向同事或师傅请教，增加实操练习。`;
-
-    return suggestions;
+    // Note: The original function in history.js calculated masteryRate per section.
+    // This version from analysis.js returns raw scores and totals.
+    // The buildAnalysisHtmlForPdf function needs to be compatible with this structure.
+    // We will keep the analysis.js structure for consistency and potential use in generateSuggestions.
+    
+    return { 
+        performance: sectionPerformance, 
+        totalAchieved: totalAchievedScore,
+        totalStandard: totalStandardScore
+    };
 }
+
+
+// **** CORRECT IMPLEMENTATION FROM analysis.js ****
+function calculateIndividualQuestionPerformance(record) {
+    const performance = { best: [], worst: [] };
+     if (!record || !record.questions || !record.answers) return performance;
+
+     record.questions.forEach(q => {
+         if (!q || !q.id) return;
+         const answer = record.answers[q.id];
+         const standardScore = q.standardScore || 0;
+         const knowledgeSource = q.knowledgeSource || null;
+
+         const questionInfo = {
+              id: q.id,
+              content: q.content || '无内容',
+              score: null,
+              standardScore: standardScore,
+              comment: '',
+              knowledgeSource: knowledgeSource // Includes knowledgeSource
+          };
+
+         if (answer) {
+             if (answer.score !== null && !isNaN(answer.score)) {
+                 questionInfo.score = Number(answer.score);
+             }
+             questionInfo.comment = answer.comment || '';
+
+             if (standardScore > 0) {
+                 if (questionInfo.score !== null) {
+                     const scoreRate = (questionInfo.score / standardScore) * 100;
+                     // Use a threshold consistent with generateSuggestions (e.g., 70)
+                     if (scoreRate < 70) { 
+                         performance.worst.push(questionInfo);
+                     } else {
+                         performance.best.push(questionInfo);
+                     }
+                 } else { 
+                     performance.worst.push(questionInfo);
+                 }
+             } else { 
+                 performance.worst.push(questionInfo);
+             }
+         } else {
+             questionInfo.score = '未作答';
+             performance.worst.push(questionInfo);
+         }
+     });
+
+     const calculateRate = (q) => {
+         if (q.score === '未作答' || q.score === null) return -1;
+         return q.standardScore > 0 ? (q.score / q.standardScore * 100) : 0;
+     };
+      performance.best.sort((a, b) => calculateRate(b) - calculateRate(a));
+      performance.worst.sort((a, b) => calculateRate(a) - calculateRate(b));
+
+    // Note: The original function in history.js added a scoreRate property.
+    // This version from analysis.js does not. buildAnalysisHtmlForPdf needs to adapt.
+    return performance;
+}
+
+// **** CORRECT IMPLEMENTATION FROM analysis.js (V2) ****
+// Note: This version takes relevantHistory as an optional second argument, 
+// but buildAnalysisHtmlForPdf currently calls it with only one argument.
+// The trend analysis part will be skipped if relevantHistory is not provided.
+function generateIndividualTrainingSuggestions(record, relevantHistory = []) { 
+    const weakQuestions = record.questions ? JSON.parse(JSON.stringify(record.questions.filter(q => {
+        const answer = record.answers[q.id];
+        return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 < 70;
+    }))) : [];
+    const improvableQuestions = record.questions ? JSON.parse(JSON.stringify(record.questions.filter(q => {
+        const answer = record.answers[q.id];
+        return answer && answer.score !== null && q.standardScore > 0 && (answer.score / q.standardScore) * 100 >= 70 && (answer.score / q.standardScore) * 100 < 85;
+    }))) : [];
+
+    const suggestions = [];
+    try {
+        const criticalThreshold = 60;
+        const weakThreshold = 70;
+        const goodThreshold = 90;
+
+        if (!record || !record.questions || !record.answers) {
+            console.warn("[generateIndividualTrainingSuggestions - history.js] Invalid record data provided.");
+            return [{ type: 'error', text: '无法生成培训建议：测评记录数据不完整或格式错误。', icon: 'bi-x-octagon-fill text-danger', priority: -1 }];
+        }
+
+        const sectionPerformance = calculateIndividualSectionPerformance(record); // Uses the replaced version above
+        const sectionScoreRates = {};
+        if (sectionPerformance.performance) {
+            Object.entries(sectionPerformance.performance).forEach(([section, data]) => {
+              sectionScoreRates[section] = data.max > 0 ? Math.round((data.score / data.max) * 100) : 0;
+            });
+        }
+        const overallScoreRate = sectionPerformance.totalStandard > 0
+            ? Math.round((sectionPerformance.totalAchieved / sectionPerformance.totalStandard) * 100)
+            : 0;
+        const questionPerformance = calculateIndividualQuestionPerformance(record); // Uses the replaced version above
+
+        let trendSuggestion = null;
+        if (relevantHistory && relevantHistory.length > 0) { // Check if history is provided
+             const currentRecordIndex = relevantHistory.findIndex(r => r.id === record.id);
+             if (currentRecordIndex > 0) {
+                const currentScoreRate = record.score?.scoreRate;
+                const previousRecord = relevantHistory[currentRecordIndex - 1];
+                const previousScoreRate = previousRecord?.score?.scoreRate;
+                 if (currentScoreRate !== undefined && previousScoreRate !== undefined) {
+                    const difference = currentScoreRate - previousScoreRate;
+                     // ... (trend logic as in analysis.js) ...
+                     if (difference < -10) { 
+                        trendSuggestion = { type: 'trend_critical_down', text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-danger">显著下降</strong>...`, icon: 'bi-graph-down-arrow text-danger', priority: 0 };
+                    } else if (difference < -3) { 
+                        trendSuggestion = { type: 'trend_slight_down', text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-warning">有所下降</strong>...`, icon: 'bi-arrow-down-right text-warning', priority: 3 };
+                    } else if (difference > 10) { 
+                         trendSuggestion = { type: 'trend_up', text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-success">显著提升</strong>...`, icon: 'bi-graph-up-arrow text-success', priority: 4 };
+                    } else if (difference > 3) { 
+                         trendSuggestion = { type: 'trend_slight_up', text: `成绩趋势：本次 (${currentScoreRate}%) 较上次 (${previousScoreRate}%) <strong class="text-success">有所进步</strong>...`, icon: 'bi-arrow-up-right text-success', priority: 5 };
+                    } else { 
+                         trendSuggestion = { type: 'trend_stable', text: `成绩趋势：与上次 (${previousScoreRate}%)相比...`, icon: 'bi-dash-lg text-secondary', priority: 5 };
+                    }
+                    if (trendSuggestion) suggestions.push(trendSuggestion);
+                }
+             }
+        } // End history check
+
+        let hasCriticalSection = false;
+        let hasWeakSection = false;
+        Object.entries(sectionScoreRates).sort(([, rateA], [, rateB]) => rateA - rateB).forEach(([section, scoreRate]) => {
+            if (scoreRate < criticalThreshold) {
+                hasCriticalSection = true;
+                // **** 修改：使用完整文本 ****
+                suggestions.push({ type: 'section_critical', text: `<strong>重点关注板块：</strong> <strong class="text-danger">${section}</strong> (${scoreRate}%), 掌握程度严重不足, 建议安排系统性培训和专项辅导。`, icon: 'bi-exclamation-triangle-fill text-danger', priority: 1 });
+            } else if (scoreRate < weakThreshold) {
+                hasWeakSection = true;
+                 // **** 修改：使用完整文本 (假设文本) ****
+                 suggestions.push({ type: 'section_weak', text: `<strong>待加强板块：</strong> <strong class="text-warning">${section}</strong> (${scoreRate}%), 存在薄弱环节, 建议加强练习和复习。`, icon: 'bi-exclamation-circle-fill text-warning', priority: 2 });
+            }
+        });
+
+        const criticalQuestions = questionPerformance.worst.filter(q => q.score === '未作答' || (q.standardScore > 0 && (q.score / q.standardScore * 100) < criticalThreshold));
+        const weakQuestions = questionPerformance.worst.filter(q => !criticalQuestions.includes(q) && q.score !== '未作答' && q.standardScore > 0 && (q.score / q.standardScore * 100) < weakThreshold);
+
+        if (criticalQuestions.length > 0) {
+            let questionListHTML = criticalQuestions.map(q => { // **** 移除 .slice(0, 3) ****
+                const scoreText = q.score === '未作答' ? '<span class="badge bg-danger">未作答</span>' : `<span class="badge bg-danger">${q.score}/${q.standardScore}</span>`;
+                // **** HERE: Use knowledgeSource ****
+                const sourceText = q.knowledgeSource 
+                                   ? `，建议<strong class="text-danger">重点复习《${q.knowledgeSource}》</strong>相关内容` 
+                                   : '，建议<strong class="text-danger">查找相关资料重点复习</strong>';
+                return `<li class="mb-1">${q.content || '无内容'} ${scoreText}${sourceText}</li>`;
+            }).join('');
+            suggestions.push({ type: 'questions_critical', text: `<strong>掌握薄弱题目：</strong>...<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`, icon: 'bi-journal-x text-danger', priority: 1 });
+        } else if (weakQuestions.length > 0) {
+            let questionListHTML = weakQuestions.map(q => { // **** 移除 .slice(0, 3) ****
+                const scoreText = `<span class="badge bg-warning">${q.score}/${q.standardScore}</span>`;
+                 // **** HERE: Use knowledgeSource ****
+                 const sourceText = q.knowledgeSource 
+                                   ? `，建议<strong class="text-warning">参考《${q.knowledgeSource}》加深理解</strong>` 
+                                   : '，建议<strong class="text-warning">对照标准答案加深理解</strong>';
+                return `<li class="mb-1">${q.content || '无内容'} ${scoreText}${sourceText}</li>`;
+            }).join('');
+            suggestions.push({ type: 'questions_weak', text: `<strong>待改进题目：</strong>...<ul class="list-unstyled small ms-3 mt-1">${questionListHTML}</ul>`, icon: 'bi-journal-check text-warning', priority: 3 });
+        }
+
+        if (overallScoreRate < criticalThreshold) {
+             // **** 修改：使用完整文本 (假设文本) ****
+             suggestions.push({ type: 'overall_critical', text: `<strong>总体评价：</strong> 本次测评成绩 (${overallScoreRate}%) <strong class="text-danger">偏低</strong>，与岗位要求差距较大，需引起高度重视。`, icon: 'bi-clipboard-x text-danger', priority: 2 });
+             suggestions.push({ type: 'learning_method_low', text: `<strong>学习建议：</strong> <strong class="text-danger">必须系统复习</strong> 相关知识和操作规程，寻求辅导，尽快弥补差距。`, icon: 'bi-mortarboard-fill text-danger', priority: 2 });
+        } else if (overallScoreRate < weakThreshold) {
+            // **** 修改：使用完整文本 (假设文本) ****
+           suggestions.push({ type: 'overall_weak', text: `<strong>总体评价：</strong> 本次测评成绩 (${overallScoreRate}%) <strong class="text-warning">有待提高</strong>，部分知识点掌握不够扎实。`, icon: 'bi-clipboard-minus text-warning', priority: 3 });
+           suggestions.push({ type: 'learning_method_medium', text: `<strong>学习建议：</strong> 建议<strong class="text-warning">查漏补缺</strong>，针对薄弱环节进行重点复习和练习。`, icon: 'bi-mortarboard-fill text-warning', priority: 3 });
+        } else if (overallScoreRate < goodThreshold) {
+            // **** 修改：使用截图中的完整文本 ****
+           suggestions.push({ type: 'overall_good', text: `<strong>总体评价：</strong> 本次测评成绩 (${overallScoreRate}%) <strong class="text-success">良好</strong>, 基本掌握了岗位要求。`, icon: 'bi-clipboard-check text-success', priority: 4 });
+           // **** 修改：使用截图中的完整文本 ****
+           suggestions.push({ type: 'learning_method_good', text: `<strong>学习建议：</strong> <strong class="text-success">持续学习</strong>, 关注业务更新和新技术, 尝试解决更复杂的问题。`, icon: 'bi-mortarboard-fill text-success', priority: 4 });
+        } else { 
+            // **** 修改：使用完整文本 (假设文本) ****
+           suggestions.push({ type: 'overall_excellent', text: `<strong>总体评价：</strong> 本次测评成绩 (${overallScoreRate}%) <strong class="text-primary">优秀</strong>，全面掌握了岗位要求。`, icon: 'bi-clipboard-data text-primary', priority: 5 });
+           suggestions.push({ type: 'learning_method_excellent', text: `<strong>学习建议：</strong> <strong class="text-primary">保持领先</strong>，可进一步探索相关领域的深度知识或分享经验。`, icon: 'bi-mortarboard-fill text-primary', priority: 5 });
+        }
+
+        if (suggestions.length === 0) {
+             suggestions.push({ type: 'default_ok', text: '本次测评整体表现尚可...', icon: 'bi-info-circle text-secondary', priority: 10 });
+        } else if (!hasCriticalSection && !hasWeakSection && overallScoreRate >= goodThreshold && (!trendSuggestion || !trendSuggestion.type.includes('down'))) {
+            suggestions.push({ type: 'overall_praise', text: '综合来看，您对岗位知识掌握非常扎实...', icon: 'bi-hand-thumbs-up-fill text-primary', priority: 5 });
+        }
+
+        suggestions.sort((a, b) => a.priority - b.priority);
+        return suggestions;
+
+    } catch (error) {
+        console.error('[generateIndividualTrainingSuggestions - history.js] Error generating suggestions:', error);
+        return [{ type: 'error', text: '生成培训建议时发生内部错误。', icon: 'bi-exclamation-octagon-fill text-danger', priority: -1 }];
+    }
+}
+
 
 // **** 新增：构建分析报告的 HTML (用于 PDF) ****
 function buildAnalysisHtmlForPdf(record) {
      if (!record) return '';
 
-    const threshold = 60; // **** 新增：在这里定义阈值，使其在函数内可用 ****
+    const threshold = 60; // 定义阈值
 
     const sectionPerformance = calculateIndividualSectionPerformance(record);
     const questionPerformance = calculateIndividualQuestionPerformance(record);
-    const suggestions = generateIndividualTrainingSuggestions(record);
+    const suggestions = generateIndividualTrainingSuggestions(record); // Now returns an array
 
     // --- 1. 模块得分分布 (模拟 analysis.html 的卡片结构) ---
     let sectionHtml = '';
-    // **** 添加 analysis-report-card 类用于 CSS 控制分页 ****
     sectionHtml += '<div class="card analysis-report-card shadow-sm mb-4">'; 
-    // **** 添加 text-dark 提高对比度 ****
     sectionHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-pie-chart-fill me-2"></i>模块得分分布</div>'; 
     sectionHtml += '  <div class="card-body">';
-    sectionHtml += '    <div class="row text-center g-3">'; // Use grid gap
-    const sectionEntries = Object.entries(sectionPerformance.sections);
+    sectionHtml += '    <div class="row text-center g-3">';
+    // **** FIX: Use sectionPerformance.performance and adapt loop ****
+    const sectionEntries = Object.entries(sectionPerformance.performance || {}); // Use .performance
     if (sectionEntries.length > 0) {
         sectionEntries.forEach(([sectionName, data]) => {
-            const colorClass = data.masteryRate >= 85 ? 'text-success' : (data.masteryRate >= 60 ? 'text-warning' : 'text-danger');
+            // Calculate mastery rate here
+            const masteryRate = data.max > 0 ? parseFloat(((data.score / data.max) * 100).toFixed(1)) : 0;
+            const colorClass = masteryRate >= 85 ? 'text-success' : (masteryRate >= 60 ? 'text-warning' : 'text-danger');
             sectionHtml += `
                 <div class="col-md-4 col-sm-6">
                     <div class="border rounded p-2 h-100 d-flex flex-column justify-content-center align-items-center">
                         <h6 class="mb-1 text-primary">${sectionName}</h6>
-                        <p class="mb-0 small">得分: ${data.achieved} / ${data.possible}</p>
-                        <p class="fw-bold ${colorClass} mb-0">掌握率: ${data.masteryRate.toFixed(1)}%</p>
+                        <p class="mb-0 small">得分: ${data.score} / ${data.max}</p>
+                        <p class="fw-bold ${colorClass} mb-0">掌握率: ${masteryRate.toFixed(1)}%</p>
                     </div>
                 </div>`;
         });
@@ -2335,33 +2458,28 @@ function buildAnalysisHtmlForPdf(record) {
     sectionHtml += '  </div>'; // end card-body
     sectionHtml += '</div>'; // end card
 
-    // **** 新增：在板块之间添加视觉分隔线 ****
     sectionHtml += '<hr class="my-3" style="border-top: 1px dashed #ccc; background-color: transparent;">'; 
 
     // --- 2. 题目掌握情况 --- 
     let masteryHtml = '';
-    // **** 添加 analysis-report-card 类 ****
     masteryHtml += '<div class="card analysis-report-card shadow-sm mb-4">'; 
-    // **** 添加 text-dark ****
     masteryHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-list-check me-2"></i>题目掌握情况</div>'; 
     masteryHtml += '  <div class="card-body">';
-    // Well Mastered Questions
-    masteryHtml += `    <h6 class="text-success"><i class="bi bi-check-circle-fill me-1"></i>掌握较好题目 (得分 >= ${threshold}%)</h6>`; // Use threshold variable
+    masteryHtml += `    <h6 class="text-success"><i class="bi bi-check-circle-fill me-1"></i>掌握较好题目 (得分 >= ${threshold}%)</h6>`;
     if (questionPerformance.best.length > 0) {
         masteryHtml += '    <ul class="list-group list-group-flush mb-3">';
-        questionPerformance.best.forEach(q => {
-            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-success float-end">${q.score}/${q.standardScore}</span></li>`;
+        questionPerformance.best.slice(0, 5).forEach(q => { // Limit display
+            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-success float-end">${q.score === '未作答' ? '未作答' : (q.score ?? '--')}/${q.standardScore ?? '-'}</span></li>`;
         });
         masteryHtml += '    </ul>';
     } else {
         masteryHtml += '    <p class="text-muted ms-3">无相关题目</p>';
     }
-    // Weak Questions
-    masteryHtml += `    <h6 class="text-danger mt-3"><i class="bi bi-exclamation-triangle-fill me-1"></i>待提高题目 (得分 < ${threshold}%)</h6>`; // Use threshold variable
+    masteryHtml += `    <h6 class="text-danger mt-3"><i class="bi bi-exclamation-triangle-fill me-1"></i>待提高题目 (得分 < ${threshold}%)</h6>`;
     if (questionPerformance.worst.length > 0) {
         masteryHtml += '    <ul class="list-group list-group-flush">';
-        questionPerformance.worst.forEach(q => {
-            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-danger float-end">${q.score}/${q.standardScore}</span></li>`;
+        questionPerformance.worst.slice(0, 5).forEach(q => { // Limit display
+            masteryHtml += `<li class="list-group-item py-1">${q.content} <span class="badge bg-danger float-end">${q.score === '未作答' ? '未作答' : (q.score ?? '--')}/${q.standardScore ?? '-'}</span></li>`;
         });
         masteryHtml += '    </ul>';
     } else {
@@ -2370,49 +2488,49 @@ function buildAnalysisHtmlForPdf(record) {
     masteryHtml += '  </div>'; // end card-body
     masteryHtml += '</div>'; // end card
 
-    // **** 新增：在板块之间添加视觉分隔线 ****
     masteryHtml += '<hr class="my-3" style="border-top: 1px dashed #ccc; background-color: transparent;">';
 
     // --- 3. 个人培训建议 ---
     let suggestionHtml = '';
-    // **** 添加 analysis-report-card 类 ****
     suggestionHtml += '<div class="card analysis-report-card shadow-sm">'; 
-    // **** 添加 text-dark ****
     suggestionHtml += '  <div class="card-header bg-light fw-bold text-dark"><i class="bi bi-person-video3 me-2"></i>个人培训建议</div>'; 
     suggestionHtml += '  <div class="card-body">';
     suggestionHtml += '    <ul class="list-group list-group-flush">';
-    if (suggestions.sectionSuggestions.length > 0) {
-        suggestions.sectionSuggestions.forEach(s => {
-            suggestionHtml += `<li class="list-group-item"><i class="bi bi-exclamation-diamond-fill text-danger me-2"></i>${s}</li>`;
+    // **** FIX: Iterate over suggestions array ****
+    if (suggestions && suggestions.length > 0) {
+        suggestions.forEach(s => {
+            // Use s.icon and s.text directly. Determine icon class if only type is present.
+            let iconHtml = '';
+            if (s.icon) {
+                iconHtml = `<i class="${s.icon} me-2"></i>`;
+            } else {
+                // Fallback icon based on type (optional)
+                let iconClass = 'bi-info-circle text-secondary'; // Default
+                if (s.type?.includes('error')) iconClass = 'bi-x-octagon-fill text-danger';
+                else if (s.type?.includes('critical')) iconClass = 'bi-exclamation-triangle-fill text-danger';
+                else if (s.type?.includes('weak') || s.type?.includes('medium')) iconClass = 'bi-exclamation-circle-fill text-warning';
+                else if (s.type?.includes('good')) iconClass = 'bi-check-circle-fill text-success';
+                else if (s.type?.includes('excellent') || s.type?.includes('praise')) iconClass = 'bi-star-fill text-primary';
+                else if (s.type?.includes('trend')) iconClass = 'bi-graph-up'; // Generic trend icon
+                else if (s.type?.includes('learning')) iconClass = 'bi-mortarboard-fill';
+                iconHtml = `<i class="bi ${iconClass} me-2"></i>`;
+            }
+            suggestionHtml += `<li class="list-group-item">${iconHtml}${s.text || '无建议内容'}</li>`;
         });
-    }
-    if (suggestions.questionSuggestions.length > 0) {
-         suggestions.questionSuggestions.forEach(s => {
-            suggestionHtml += `<li class="list-group-item"><i class="bi bi-clipboard-minus text-warning me-2"></i>${s}</li>`;
-        });
-    }
-    if (suggestions.overallSuggestion) {
-        suggestionHtml += `<li class="list-group-item"><i class="bi bi-clipboard-data text-info me-2"></i>${suggestions.overallSuggestion}</li>`;
-    }
-     if (suggestions.learningSuggestion) {
-        suggestionHtml += `<li class="list-group-item"><i class="bi bi-book text-primary me-2"></i>${suggestions.learningSuggestion}</li>`;
-    }
-    if (suggestions.sectionSuggestions.length === 0 && suggestions.questionSuggestions.length === 0) {
-         suggestionHtml += '<li class="list-group-item text-muted">暂无具体薄弱项建议。</li>';
+    } else {
+        suggestionHtml += '<li class="list-group-item text-muted">暂无具体培训建议。</li>';
     }
     suggestionHtml += '    </ul>';
     suggestionHtml += '  </div>'; // end card-body
     suggestionHtml += '</div>'; // end card
 
-    // Combine all parts with a header
-    // **** 添加 analysis-report-container 类 ****
-    let finalHtml = '<div class="analysis-report-container">'; // Wrap the whole report
-    finalHtml += '<hr class="my-4">'; // Separator
+    let finalHtml = '<div class="analysis-report-container analysis-report-for-pdf">'; // Add class for cleanup
+    finalHtml += '<hr class="my-4">';
     finalHtml += '<h5 class="mb-3 text-center text-primary"><i class="bi bi-clipboard2-pulse-fill me-2"></i>个人分析报告</h5>';
-    finalHtml += sectionHtml; // Already includes its trailing HR
-    finalHtml += masteryHtml; // Already includes its trailing HR
+    finalHtml += sectionHtml;
+    finalHtml += masteryHtml;
     finalHtml += suggestionHtml;
-    finalHtml += '</div>'; // Close the wrapper div
+    finalHtml += '</div>';
 
     return finalHtml;
 }
