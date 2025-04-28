@@ -1629,7 +1629,7 @@ async function processAndUploadRecords(records) {
             assessmentAcl.setRoleWriteAccess(adminRole, true);
             // 授予被测评用户读取权限
             if (userPointer) {
-                assessmentAcl.setReadAccess(userPointer, true); 
+                assessmentAcl.setReadAccess(userPointer.id, true); 
                 // 注意：这里没有给被测评用户写权限，如果他们需要（如暂停/继续），需要添加
                  // assessmentAcl.setWriteAccess(userPointer, true);
             } else {
@@ -1707,7 +1707,7 @@ async function processAndUploadRecords(records) {
                         detailAcl.setRoleWriteAccess(adminRole, true);
                         // 授予被测评用户读取权限
                         if (userPointer) {
-                            detailAcl.setReadAccess(userPointer, true);
+                            detailAcl.setReadAccess(userPointer.id, true);
                         } // (无需警告，已在 Assessment 处警告过)
                         detail.setACL(detailAcl); // 应用 ACL
                         // **** 结束 ACL 设置 ****

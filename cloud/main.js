@@ -370,7 +370,7 @@ AV.Cloud.define('submitAssessmentCloud', async (request) => {
             detailObject.setACL(detailAcl); // 应用 ACL
             // **** 结束 ACL 设置 ****
 
-            detailObjectsToSave.push(detailObject);
+                detailObjectsToSave.push(detailObject);
         }
         if (detailObjectsToSave.length > 0) {
             console.log(`[submitAssessmentCloud] Step 4: Saving/Updating ${detailObjectsToSave.length} AssessmentDetail objects...`);
