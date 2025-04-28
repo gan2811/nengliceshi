@@ -1178,7 +1178,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
         const weakQuestions = questionPerformance.worst.filter(q => !criticalQuestions.includes(q) && q.score !== '未作答' && q.standardScore > 0 && (q.score / q.standardScore * 100) < weakThreshold);
 
         if (criticalQuestions.length > 0) {
-            let questionListHTML = criticalQuestions.slice(0, 3).map(q => { // 最多显示3个
+            let questionListHTML = criticalQuestions.map(q => { // **** 移除 .slice(0, 3) ****
                 const scoreText = q.score === '未作答' ? '<span class="badge bg-danger">未作答</span>' : `<span class="badge bg-danger">${q.score}/${q.standardScore}</span>`;
                 // **** 新增日志：检查 knowledgeSource ****
                 // console.log(`[Suggestion Gen] Critical Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
@@ -1195,7 +1195,7 @@ function generateIndividualTrainingSuggestions(record, relevantHistory = []) {
             });
             // // console.log("[generateIndividualTrainingSuggestions V2]   -> Critical questions suggestion added.");
         } else if (weakQuestions.length > 0) {
-            let questionListHTML = weakQuestions.slice(0, 3).map(q => {
+            let questionListHTML = weakQuestions.map(q => { // **** 移除 .slice(0, 3) ****
                 const scoreText = `<span class="badge bg-warning">${q.score}/${q.standardScore}</span>`;
                  // **** 新增日志：检查 knowledgeSource ****
                  // console.log(`[Suggestion Gen] Weak Q: "${q.content?.substring(0, 30)}..." knowledgeSource:`, q.knowledgeSource);
